@@ -59,7 +59,7 @@ sudo make install
 |------|---------|-------------|
 | `BUILD_PYTHON` | OFF | Build and install the Python CPython extension module |
 | `BUILD_EXAMPLES` | OFF | Build all C and C++ examples. Binaries are symlinked into `examples/bin/` for convenience |
-| `BUILD_TOOLS` | ON | Build CLI tools (`gnsshat-info`, `gnsshat-probe`, `gnsshat-rtk-base`). Requires toml11 |
+| `BUILD_TOOLS` | OFF | Build CLI tools (`gnsshat-info`, `gnsshat-probe`, `gnsshat-rtk-base`). Requires toml11 |
 | `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest` |
 
 All flags are optional.

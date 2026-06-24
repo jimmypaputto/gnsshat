@@ -6,7 +6,7 @@ project(GnssHat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
-option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" ON)
+option(BUILD_TOOLS "Build CLI tools (gnsshat-info, gnsshat-probe)" OFF)
 option(BUILD_TESTS "Build unit tests (requires GTest)" OFF)
 option(NTRIP_TLS_SUPPORT "Enable TLS for NTRIP connections (requires OpenSSL)" OFF)
 
