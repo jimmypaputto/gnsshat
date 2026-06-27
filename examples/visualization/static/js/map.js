@@ -108,6 +108,17 @@ function getChartPalette(name) {
     return themes[theme] || themes.dark;
 }
 
+// Paint the relative-map trail legend dots from the active palette so the
+// swatches always match the colours drawTrail() actually uses (including
+// after a light/dark toggle). Driven by the data-trail-bucket attribute.
+function updateRelativeLegend() {
+    const pal = getChartPalette('relative');
+    if (!pal) return;
+    document.querySelectorAll('.relative-legend .legend-dot[data-trail-bucket]').forEach(function (dot) {
+        dot.style.background = trailColorForBucket(pal, dot.dataset.trailBucket);
+    });
+}
+
 // Map a fix-quality string (as produced by app.py's fix_quality_map) to
 // one of four trail-color buckets. Anything we don't recognise — "No Fix",
 // 2D/3D, dead-reckoning, etc. — falls into 'other' (the original green).
@@ -951,6 +962,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize map
     map = new GPSMap('gps-map');
+
+    // Paint the trail legend swatches from the active palette.
+    updateRelativeLegend();
     
     // Initialize Socket.IO connection
     initializeSocket();
@@ -1183,6 +1197,7 @@ function setupUIHandlers() {
             } else if (chart === 'skyview' && window.lastGPSData && window.lastGPSData.satellites) {
                 updateSkyView(window.lastGPSData.satellites);
             } else if (chart === 'relative' && map) {
+                updateRelativeLegend();
                 map.requestRedraw();
             }
         });

@@ -102,6 +102,15 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Trail colour legend — mirrors the fix-quality buckets used
+                         by drawTrail(). Dot colours are themed at runtime from the
+                         active relative-map palette (see updateRelativeLegend()). -->
+                    <div class="skyview-legend relative-legend" aria-label="Trail colour by fix quality">
+                        <span class="legend-item"><span class="legend-dot" data-trail-bucket="other"></span>Standard</span>
+                        <span class="legend-item"><span class="legend-dot" data-trail-bucket="dgnss"></span>DGPS</span>
+                        <span class="legend-item"><span class="legend-dot" data-trail-bucket="rtkFloat"></span>RTK Float</span>
+                        <span class="legend-item"><span class="legend-dot" data-trail-bucket="rtkFixed"></span>RTK Fixed</span>
+                    </div>
                 </div>
 
                 <!-- Altitude Tape - one-axis altimeter relative to a reference -->
