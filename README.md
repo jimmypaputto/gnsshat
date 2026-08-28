@@ -7,6 +7,21 @@
 
 Driver library for Jimmy Paputto GNSS HATs on Raspberry Pi. Handles the full u-blox UBX protocol and provides a high-level API in C++, C and Python. Buy our HATs at [jimmypaputto.com](https://jimmypaputto.com) - if you have custom u-blox hardware, most of the code will still be useful.
 
+## Web Application
+
+![GNSS web application](res/apka-webowa-C-teaser.gif)
+
+The library ships with a ready-to-run **real-time web dashboard** (Flask + Socket.IO). Run it on the Raspberry Pi and open it from any device on your network - phone, laptop, tablet - no extra software needed:
+
+- **Relative map & altitude tape** - centimeter-grade position and altitude offsets from a reference point, with grid down to 1 cm on RTK fixed.
+- **Terrain map** - live position on OpenStreetMap.
+- **Sky view** - polar satellite plot color-coded by constellation (GPS, Galileo, GLONASS, BeiDou, SBAS, QZSS) plus a tracked-satellite table.
+- **RF analyzer** - live spectrum (MON-SPAN) with jamming, AGC and noise indicators (MON-RF).
+- **Navigation panel & config editor** - full fix data and live module reconfiguration straight from the browser.
+- **Three data sources** - the GnssHat library directly (SPI), a serial NMEA port, or ROS 2 topics.
+
+> **More info:** see the [visualization README](examples/visualization/README.md) for setup, operating modes and a full feature list.
+
 ## Supported Hardware
 
 The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
