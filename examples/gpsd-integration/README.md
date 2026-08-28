@@ -47,7 +47,7 @@ Build and run:
 cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake .. && make -j$(nproc)
-sudo ./GpsdInteractive
+sudo ./gpsd-interactive
 ```
 
 Then in another terminal:
