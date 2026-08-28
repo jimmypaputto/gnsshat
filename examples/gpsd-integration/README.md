@@ -47,14 +47,15 @@ Build and run:
 cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake .. && make -j$(nproc)
-sudo ./GpsdInteractive
+sudo ./gpsd-interactive
 ```
 
 Then in another terminal:
 
 ```bash
-cgps
+sudo cat /dev/jimmypaputto/gnss
 ```
+You should see NMEA msgs flowing. [Gpsd installation below](#configure-gpsd)
 
 Key API calls:
 - `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
@@ -84,6 +85,7 @@ cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
+sudo make install
 ```
 
 ## Install
