@@ -53,8 +53,9 @@ sudo ./gpsd-interactive
 Then in another terminal:
 
 ```bash
-cgps
+sudo cat /dev/jimmypaputto/gnss
 ```
+You should see NMEA msgs flowing. [Gpsd installation below](#configure-gpsd)
 
 Key API calls:
 - `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
