@@ -5,14 +5,17 @@ project(GpsdIntegration)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Requires the main project to be built and installed first (sudo make install)
+find_package(GnssHat REQUIRED)
+
 # Interactive example
 add_executable(GpsdInteractive src/GpsdInteractive.cpp)
 set_target_properties(GpsdInteractive PROPERTIES OUTPUT_NAME gpsd-interactive)
-target_link_libraries(GpsdInteractive GnssHat)
+target_link_libraries(GpsdInteractive GnssHat::GnssHat)
 
 # Daemon example
 add_executable(jpgnss2gpsd-bridge src/Daemon.cpp)
-target_link_libraries(jpgnss2gpsd-bridge GnssHat)
+target_link_libraries(jpgnss2gpsd-bridge GnssHat::GnssHat)
 
 install(
     TARGETS jpgnss2gpsd-bridge

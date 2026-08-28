@@ -134,10 +134,12 @@ set(LIB_SOURCES
 
 add_library(GnssHat SHARED ${LIB_SOURCES})
 
+# Installed headers live in <includedir>/jimmypaputto, and public sources include
+# them as <jimmypaputto/...>, so the exported include dir must be <includedir>.
 target_include_directories(GnssHat
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 # Git info for BuildInfo

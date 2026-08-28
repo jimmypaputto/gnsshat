@@ -47,13 +47,16 @@ sudo cmake --install build
 ### Build & install
 
 ```sh
-git clone https://github.com/jimmypaputto/GnssHat.git
-cd GnssHat
+git clone https://github.com/jimmypaputto/gnsshat.git
+cd gnsshat
 mkdir -p build && cd build
 cmake .. -DBUILD_PYTHON=ON -DBUILD_EXAMPLES=ON
-make
+make -j$(nproc)
 sudo make install
 ```
+
+> `make -j$(nproc)` builds in parallel using all cores
+> If you run low on RAM, lower it (e.g. `make -j2`).
 
 | Flag | Default | Description |
 |------|---------|-------------|

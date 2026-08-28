@@ -7,6 +7,12 @@ Two ways to forward GNSS data to gpsd:
 
 Both create `/dev/jimmypaputto/gnss` virtual serial port that gpsd reads.
 
+> **Prerequisite:** both binaries link against `libgnsshat`, so the main project must be
+> built **and installed** first (`sudo make install`) - see
+> [Installation](../../README.md#installation) in the main README. Without it `cmake ..`
+> fails with `Could not find a package configuration file provided by "GnssHat"` and
+> `make` fails with `jimmypaputto/GnssHat.hpp: No such file or directory`.
+
 L1 GNSS HAT and L1/L5 RTK HAT use SPI — gpsd can't read SPI directly. The bridge reads NMEA from the HAT and exposes it as a virtual serial device that gpsd understands.
 
 The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. The bridge still works with TIME HAT and simplifies the setup.
@@ -40,7 +46,7 @@ Build and run:
 ```bash
 cd examples/gpsd-integration
 mkdir -p build && cd build
-cmake .. && make
+cmake .. && make -j$(nproc)
 sudo ./GpsdInteractive
 ```
 
@@ -77,7 +83,7 @@ The daemon:
 cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake ..
-make
+make -j$(nproc)
 ```
 
 ## Install
@@ -103,8 +109,12 @@ Verify:
 
 ```bash
 ls /dev/jimmypaputto/gnss
-cat /dev/jimmypaputto/gnss
 sudo systemctl status jpgnss2gpsd-bridge
+
+# Reading the port directly requires gpsd to be stopped - it is a single-reader
+# PTY, so gpsd/cgps would steal the bytes and `cat` would print nothing
+sudo systemctl stop gpsd.socket gpsd
+cat /dev/jimmypaputto/gnss
 ```
 
 ## Optional: PPS support
@@ -380,7 +390,9 @@ sudo systemctl restart jpgnss2gpsd-bridge
 
 **gpsd shows no data:**
 ```bash
-# Check bridge output first
+# Check bridge output first - stop gpsd, it holds the virtual port open and
+# consumes the NMEA stream, so `cat` would show nothing while it runs
+sudo systemctl stop gpsd.socket gpsd
 cat /dev/jimmypaputto/gnss
 # If NMEA flows here but cgps is empty — check /etc/default/gpsd device path
 ```
