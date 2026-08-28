@@ -6,4 +6,4 @@ Name: GnssHat
 Description: Driver library for Jimmy Paputto GNSS HATs for Raspberry Pi
 Version: @PROJECT_VERSION@
 Libs: -L${libdir} -lgnsshat
-Cflags: -I${includedir}/jimmypaputto
+Cflags: -I${includedir}

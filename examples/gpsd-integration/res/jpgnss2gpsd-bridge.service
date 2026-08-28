@@ -9,6 +9,9 @@ Type=simple
 User=root
 Group=root
 ExecStart=/usr/local/bin/jimmypaputto/jpgnss2gpsd-bridge
+# Hold the unit in "activating" until the virtual TTY exists, so units ordered
+# After= this one (gpsd) do not start before /dev/jimmypaputto/gnss is present.
+ExecStartPost=/bin/sh -c 'for _ in $(seq 1 120); do [ -e /dev/jimmypaputto/gnss ] && exit 0; sleep 0.5; done; exit 1'
 Restart=always
 RestartSec=5
 StandardOutput=journal

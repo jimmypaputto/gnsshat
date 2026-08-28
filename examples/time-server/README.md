@@ -8,6 +8,11 @@ Works with all three HATs (L1 GNSS HAT, L1/L5 TIME HAT, L1/L5 RTK HAT). PPS outp
 
 ## Requirements
 
+> **Build the main project first.** The bridge daemon links against `libgnsshat`, so follow
+> [Installation](../../README.md#installation) in the main README (dependencies, `cmake ..`,
+> `make -j$(nproc)`, `sudo make install`) before step 3 below. That also installs the
+> `build-essential`/`cmake`/`libgpiod-dev` packages the daemon needs.
+
 | Component | L1 GNSS HAT (NEO-M9N) | L1/L5 TIME HAT (NEO-F10T) | L1/L5 RTK HAT (NEO-F9P) |
 |-----------|------------------------|----------------------------|--------------------------|
 | jpgnss2gpsd-bridge | Required (or use USB) | Optional | Required (or use USB) |
@@ -73,13 +78,15 @@ If no pulses - wait for GNSS fix or check antenna placement.
 
 ## 3. Install and start the bridge daemon [Required for L1 and RTK HATs unless using USB, Optional for TIME HAT]
 
-Build and install from `examples/gpsd-integration/`:
+Build and install from `examples/gpsd-integration/`.
+This step requires the main project to be already built **and installed**
+(`sudo make install`) - see [Installation](../../README.md#installation).
 
 ```bash
 cd examples/gpsd-integration
 mkdir -p build && cd build
 cmake ..
-make
+make -j$(nproc)
 sudo make install
 cd ..
 sudo ./scripts/install_daemon.sh
@@ -428,6 +435,47 @@ chronyc sources -v  # re-check after fix
 sudo systemctl restart jpgnss2gpsd-bridge
 ls /dev/jimmypaputto/gnss
 ```
+
+**`cgps` is empty / no data at all (SPI HATs):**
+
+Work through it from the bottom up - first the bridge, then gpsd.
+
+1. Is the bridge running and actually producing NMEA?
+   ```bash
+   sudo systemctl status jpgnss2gpsd-bridge
+   sudo journalctl -u jpgnss2gpsd-bridge -n 50
+
+   # gpsd/cgps consume the bytes from the virtual port - stop them first,
+   # otherwise `cat` shows nothing even though the bridge works fine
+   sudo systemctl stop gpsd.socket gpsd
+   sudo cat /dev/jimmypaputto/gnss   # expect $GNGGA/$GNRMC lines once per second
+   ```
+   No sentences here means the problem is the HAT, not gpsd — verify SPI is enabled
+   (`dtparam=spi=on` in `/boot/firmware/config.txt`) and run `sudo gnsshat-probe`.
+   Remember to `sudo systemctl start gpsd.socket gpsd` afterwards.
+
+2. Is gpsd actually running with that device? On Raspberry Pi OS gpsd is
+   socket-activated, so `systemctl start gpsd` alone may leave it idle:
+   ```bash
+   sudo systemctl status gpsd
+   gpsctl -l                 # lists devices gpsd knows about
+   ```
+   If gpsd is inactive because it started before the bridge created the device,
+   restart in order:
+   ```bash
+   sudo systemctl restart jpgnss2gpsd-bridge
+   sudo systemctl restart gpsd.socket gpsd
+   ```
+
+3. Still nothing — run gpsd in the foreground to see why:
+   ```bash
+   sudo systemctl stop gpsd.socket gpsd
+   sudo gpsd -N -D5 /dev/jimmypaputto/gnss
+   ```
+   Then in another terminal run `cgps`.
+
+> Only one process may drive the HAT at a time. If another example (or a second
+> copy of the bridge) is running, the daemon starts but never gets navigation data.
 
 **Monitor in real time:**
 ```bash
