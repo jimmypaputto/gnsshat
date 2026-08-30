@@ -10,7 +10,6 @@
 #include <map>
 #include <sstream>
 #include <cstring>
-#include <chrono>
 
 
 namespace JimmyPaputto
@@ -188,7 +187,8 @@ bool NmeaForwarder::createVirtualTty()
     return true;
 }
 
-void NmeaForwarder::startForwarding(const Gnss& gnss)
+void NmeaForwarder::startForwarding(const Gnss& gnss,
+    Notifier& navigationNotifier)
 {
     if (forwardingThread_.joinable())
     {
@@ -210,9 +210,10 @@ void NmeaForwarder::startForwarding(const Gnss& gnss)
         return;
     }
 
+    lastEpoch_.clear();
     forwardingThread_ = std::jthread(
-        [this, &gnss](std::stop_token stoken) {
-            forwardingThread(gnss, stoken);
+        [this, &gnss, &navigationNotifier](std::stop_token stoken) {
+            forwardingThread(gnss, navigationNotifier, stoken);
         }
     );
 }
@@ -237,15 +238,37 @@ bool NmeaForwarder::isRunning() const
         && !forwardingThread_.get_stop_token().stop_requested();
 }
 
-void NmeaForwarder::forwardingThread(const Gnss& gnss, std::stop_token stoken)
-{    
+void NmeaForwarder::forwardingThread(const Gnss& gnss,
+    Notifier& navigationNotifier, std::stop_token stoken)
+{
+    uint64_t navigationCursor = 0;
+
     while (!stoken.stop_requested())
     {
+        // Emission is driven by the module's navigation epoch, never by a
+        // free-running timer: a sleep_for() loop drifts against the 1 Hz
+        // epoch and eventually hands gpsd a sentence describing the previous
+        // second, which pairs it with the wrong PPS edge.
+        if (!navigationNotifier.waitForNewGeneration(navigationCursor, stoken))
+            return;
+
         if (!gnss.lock())
             continue;
 
         const auto nav = gnss.navigation();
         gnss.unlock();
+
+        // A single epoch may raise more than one notification (M9N/F9P notify
+        // per TX-READY burst); NMEA time has 1 s resolution, so repeating an
+        // epoch would only confuse gpsd.
+        const std::string time = formatTime(nav);
+        if (!time.empty())
+        {
+            const std::string epoch = time + formatDate(nav);
+            if (epoch == lastEpoch_)
+                continue;
+            lastEpoch_ = epoch;
+        }
 
         const std::string gga = generateNmeaGGA(nav);
         const std::string gsa = generateNmeaGSA(nav);
@@ -262,25 +285,15 @@ void NmeaForwarder::forwardingThread(const Gnss& gnss, std::stop_token stoken)
                 masterFd_, combined.c_str(), combined.length()
             );
 
-            if (result < 0)
+            if (result < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
             {
-                if (errno != EAGAIN && errno != EWOULDBLOCK)
-                {
-                    fprintf(
-                        stderr,
-                        "[NmeaForwarder] Write error: %s\r\n",
-                        strerror(errno)
-                    );
-                }
-            }
-            else
-            {
-                // TODO: check for that, is this taking too much CPU?
-                fsync(masterFd_);
+                fprintf(
+                    stderr,
+                    "[NmeaForwarder] Write error: %s\r\n",
+                    strerror(errno)
+                );
             }
         }
-
-        std::this_thread::sleep_for(updateInterval_);
     }
 }
 

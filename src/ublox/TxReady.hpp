@@ -53,20 +53,13 @@ private:
             if (event == GpioInterruptLine::EventType::Timeout)
             {
                 if (gpioLine_.getValue() == 1)
-                {
                     notifier_.notify();
-                    notifier_.setFlag(false);
-                }
                 continue;
             }
 
             if (event == GpioInterruptLine::EventType::Rising)
             {
                 notifier_.notify();
-            }
-            else if (event == GpioInterruptLine::EventType::Falling)
-            {
-                notifier_.setFlag(true);
             }
             else if (event == GpioInterruptLine::EventType::Error)
             {

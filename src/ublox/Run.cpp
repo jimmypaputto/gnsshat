@@ -6,6 +6,8 @@
 
 #include "UartDriver.hpp"
 
+#include <algorithm>
+
 
 namespace JimmyPaputto
 {
@@ -29,22 +31,38 @@ M9NRun::M9NRun(ICommDriver& commDriver, UbxParser& ubxParser,
 void M9NRun::execute(std::stop_token stoken)
 {
     constexpr uint32_t rxBatchSize = 1024;
-    uint32_t counter = runRxBuffOffset_;
-    if (!txReadyNotifier_.wait(stoken))
+
+    // The previous call stopped on a full buffer, so the module still holds
+    // data and will not raise a new TX-READY edge to wake us.
+    if (!moreDataPending_ && !txReadyNotifier_.wait(stoken))
         return;
 
-    while (!txReadyNotifier_.getFlag())
+    uint32_t counter = runRxBuffOffset_;
+    bool drained = false;
+
+    while (counter + rxBatchSize <= runRxBuffSize)
     {
-        if (counter + rxBatchSize > runRxBuffSize)
-            counter = 0;
-        commDriver_.getRxBuff(runRxBuff_.data() + counter, rxBatchSize);
+        uint8_t* batch = runRxBuff_.data() + counter;
+        commDriver_.getRxBuff(batch, rxBatchSize);
+
+        // The module clocks out 0xFF once its output buffer runs dry - that is
+        // the only end-of-burst marker that cannot be missed. Ending the loop
+        // on the TX-READY falling edge instead loses the edge whenever it
+        // lands while this thread is parsing, after which the loop spins for a
+        // whole epoch and overruns the buffer.
+        drained = std::all_of(batch, batch + rxBatchSize,
+            [](const uint8_t byte) { return byte == 0xFF; });
+        if (drained)
+            break;
+
         counter += rxBatchSize;
     }
+
+    moreDataPending_ = !drained;
 
     const auto unfinishedFrame = ubxParser_.parse(
         std::vector<uint8_t>(runRxBuff_.data(), runRxBuff_.data() + counter)
     );
-    txReadyNotifier_.setFlag(false);
     std::copy(
         unfinishedFrame.begin(), unfinishedFrame.end(), runRxBuff_.begin()
     );
