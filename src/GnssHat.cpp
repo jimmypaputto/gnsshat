@@ -648,7 +648,7 @@ bool GnssHat::startForwardForGpsd()
         return false;
     }
 
-    nmeaForwarder_->startForwarding(gnss_);
+    nmeaForwarder_->startForwarding(gnss_, navigationNotifier_);
     return true;
 }
 
