@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- SPI receive loop no longer stalls and discards data. `M9NRun::execute()` ended
+  the drain on a latched TX-READY falling edge; an edge arriving while the
+  thread was parsing got overwritten and lost, after which the loop spun for a
+  full epoch (~590 kB of SPI traffic) and wrapped the 8 kB buffer ~72 times,
+  silently dropping it on every wrap. Over half the navigation epochs never
+  reached the parser while in that state. The loop now ends on the module's
+  0xFF idle padding and never discards buffered bytes
 - NMEA forwarding for gpsd no longer drifts against the module's navigation
   epoch. The forwarding thread used a free-running `sleep_for(1000ms)` loop, so
   its true period was 1 s plus the loop body; the sampling phase crept across
