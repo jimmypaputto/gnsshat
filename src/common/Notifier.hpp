@@ -5,7 +5,6 @@
 #ifndef JIMMY_PAPUTTO_NOTIFIER_HPP_
 #define JIMMY_PAPUTTO_NOTIFIER_HPP_
 
-#include <atomic>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -53,22 +52,11 @@ public:
         return true;
     }
 
-    void setFlag(const bool value)
-    {
-        flag = value;
-    }
-
-    bool getFlag() const
-    {
-        return flag;
-    }
-
 private:
     std::mutex mtx;
     std::condition_variable_any cv;
     bool ready = false;
     uint64_t generation = 0;
-    std::atomic<bool> flag = false;
 };
 
 }  // JimmyPaputto

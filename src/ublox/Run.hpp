@@ -50,6 +50,7 @@ public:
 private:
     Notifier& txReadyNotifier_;
     Notifier& navigationNotifier_;
+    bool moreDataPending_ = false;
 };
 
 class F10TRun : public IRunStrategy, public RunBase
