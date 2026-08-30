@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- NMEA forwarding for gpsd no longer drifts against the module's navigation
+  epoch. The forwarding thread used a free-running `sleep_for(1000ms)` loop, so
+  its true period was 1 s plus the loop body; the sampling phase crept across
+  the 1 Hz boundary and every ~30 minutes a second was emitted twice while
+  another was skipped. gpsd then paired sentences with the wrong PPS edge and
+  chrony stepped by exactly -1 s ([#38](https://github.com/jimmypaputto/gnsshat/issues/38))
+
 ## [1.1.0] - 2026-05-06
 
 ### Added
