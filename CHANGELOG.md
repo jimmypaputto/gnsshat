@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- gpsd bridge no longer forwards empty NMEA forever after boot. The receiver
+  can come out of boot with the GNSS engine stopped while the config interface
+  (VALGET/VALSET/ACK) answers normally, so startup completed "successfully"
+  on a dead receiver; a later service restart healed it because its hot reset
+  finally reached a receiver that was awake. Startup now sends a controlled
+  GNSS start (`UBX-CFG-RST` 0x09) at its end - a no-op on a running engine,
+  revives a stopped one - and `softResetUbloxSom_HotStart()` waits 1 s for
+  the receiver to come back before returning
+  ([#40](https://github.com/jimmypaputto/gnsshat/issues/40))
 - SPI receive loop no longer stalls and discards data. `M9NRun::execute()` ended
   the drain on a latched TX-READY falling edge; an edge arriving while the
   thread was parsing got overwritten and lost, after which the loop spun for a

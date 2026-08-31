@@ -5,6 +5,7 @@
 #include "GnssHat.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <thread>
@@ -21,6 +22,7 @@
 #include "ublox/TxReady.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/Ublox.hpp"
+#include "ublox/ubxmsg/UBX_CFG_RST.hpp"
 
 
 namespace JimmyPaputto
@@ -563,11 +565,12 @@ void GnssHat::hardResetUbloxSom_ColdStart() const
 
 void GnssHat::softResetUbloxSom_HotStart()
 {
-    static constexpr std::array<uint8_t, 12> txBuffer = {
-        0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x0F, 0x66
-    };
+    const auto txBuffer = ubxmsg::UBX_CFG_RST::hotStart();
     std::vector<uint8_t> rxBuffer(txBuffer.size());
     commDriver_->transmitReceive(txBuffer, rxBuffer);
+    // The receiver is deaf while it reboots; give it time so the first
+    // startup poll does not go into the void.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 }
 
 void GnssHat::timepulse()
