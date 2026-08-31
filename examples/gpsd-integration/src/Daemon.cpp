@@ -19,6 +19,10 @@ void signalHandler(int)
 
 auto main() -> int
 {
+    // Under systemd stdout is a socket -> glibc fully buffers it and the
+    // startup lines reach journald only at exit, with misleading timestamps.
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
