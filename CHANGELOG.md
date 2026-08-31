@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- SPI receive loop no longer stalls and discards data. `M9NRun::execute()` ended
+  the drain on a latched TX-READY falling edge; an edge arriving while the
+  thread was parsing got overwritten and lost, after which the loop spun for a
+  full epoch (~590 kB of SPI traffic) and wrapped the 8 kB buffer ~72 times,
+  silently dropping it on every wrap. Over half the navigation epochs never
+  reached the parser while in that state. The loop now ends on the module's
+  0xFF idle padding and never discards buffered bytes
+- NMEA forwarding for gpsd no longer drifts against the module's navigation
+  epoch. The forwarding thread used a free-running `sleep_for(1000ms)` loop, so
+  its true period was 1 s plus the loop body; the sampling phase crept across
+  the 1 Hz boundary and every ~30 minutes a second was emitted twice while
+  another was skipped. gpsd then paired sentences with the wrong PPS edge and
+  chrony stepped by exactly -1 s ([#38](https://github.com/jimmypaputto/gnsshat/issues/38))
+
 ## [1.1.0] - 2026-05-06
 
 ### Added

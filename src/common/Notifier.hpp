@@ -5,8 +5,8 @@
 #ifndef JIMMY_PAPUTTO_NOTIFIER_HPP_
 #define JIMMY_PAPUTTO_NOTIFIER_HPP_
 
-#include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <stop_token>
 
@@ -21,7 +21,8 @@ public:
     {
         std::lock_guard lock(mtx);
         ready = true;
-        cv.notify_one();
+        ++generation;
+        cv.notify_all();
     }
 
     void wait()
@@ -40,21 +41,22 @@ public:
         return true;
     }
 
-    void setFlag(const bool value)
+    // Side subscriber: keeps its own cursor instead of consuming `ready`, so
+    // it neither steals nor misses the notifications seen by wait().
+    bool waitForNewGeneration(uint64_t& cursor, std::stop_token stoken)
     {
-        flag = value;
-    }
-
-    bool getFlag() const
-    {
-        return flag;
+        std::unique_lock lock(mtx);
+        if (!cv.wait(lock, stoken, [this, &cursor]{ return generation != cursor; }))
+            return false;
+        cursor = generation;
+        return true;
     }
 
 private:
     std::mutex mtx;
     std::condition_variable_any cv;
     bool ready = false;
-    std::atomic<bool> flag = false;
+    uint64_t generation = 0;
 };
 
 }  // JimmyPaputto

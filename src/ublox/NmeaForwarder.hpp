@@ -29,7 +29,7 @@ public:
     ~NmeaForwarder();
 
     bool createVirtualTty();
-    void startForwarding(const Gnss& gnss);
+    void startForwarding(const Gnss& gnss, Notifier& navigationNotifier);
     void stopForwarding();
     void joinForwarding();
 
@@ -37,7 +37,8 @@ public:
     bool isRunning() const;
 
 private:
-    void forwardingThread(const Gnss& gnss, std::stop_token stoken);
+    void forwardingThread(const Gnss& gnss, Notifier& navigationNotifier,
+                          std::stop_token stoken);
     std::string generateNmeaGGA(const Navigation& navigation);
     std::string generateNmeaRMC(const Navigation& navigation);
     std::string generateNmeaGSA(const Navigation& navigation);
@@ -55,7 +56,7 @@ private:
     std::string devicePath_;
     std::jthread forwardingThread_;
 
-    std::chrono::milliseconds updateInterval_{1000};
+    std::string lastEpoch_;
 };
 
 }  // JimmyPaputto
