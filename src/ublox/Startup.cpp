@@ -19,6 +19,7 @@
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
 #include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
+#include "ublox/ubxmsg/UBX_CFG_RST.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
 #include "ublox/ubxmsg/UBX_MON_VER.hpp"
@@ -598,6 +599,8 @@ bool M9NStartup::execute()
         }
     }
 
+    sendGnssEngineStart();
+
     pollMonVer();
     return true;
 }
@@ -811,6 +814,13 @@ int StartupBase::pollRxData(uint8_t* rxBuff, const uint32_t size,
 {
     commDriver_.getRxBuff(rxBuff, size);
     return size;
+}
+
+void StartupBase::sendGnssEngineStart()
+{
+    const auto frame = ubxmsg::UBX_CFG_RST::startGnss();
+    std::vector<uint8_t> rxBuff(frame.size());
+    commDriver_.transmitReceive(frame, rxBuff);
 }
 
 bool StartupBase::pollMonVer(int timeoutMs)

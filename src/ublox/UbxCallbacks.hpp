@@ -8,6 +8,7 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <utility>
 
 #include "EUbxMsg.hpp"
 #include "IUbloxConfigRegistry.hpp"
@@ -22,19 +23,22 @@ class UbxCallbacks
 {
 public:
     explicit UbxCallbacks(IUbloxConfigRegistry& configRegistry,
-        Notifier& navigationNotifier, Notifier& timeMarkNotifier,
-        const bool callbackNotificationEnabled);
+        Notifier& timeMarkNotifier);
 
     void run(ubxmsg::IUbxMsg& ubxMsg, const EUbxMsg& eUbxMsg);
+
+    bool consumeNavigationEpoch()
+    {
+        return std::exchange(navigationEpochSeen_, false);
+    }
 
 private:
     void ackNakCb(ubxmsg::IUbxMsg& ubxMsg, EUbxMsg eUbxMsg,
         IUbloxConfigRegistry& configRegistry);
 
     std::array<std::function<void(ubxmsg::IUbxMsg&)>, numberOfUbxMsgs> callbacks_;
-    Notifier& navigationNotifier_;
     Notifier& timeMarkNotifier_;
-    const bool callbackNotificationEnabled_;
+    bool navigationEpochSeen_ = false;
 };
 
 }  // JimmyPaputto

@@ -49,6 +49,11 @@ protected:
 
     bool awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType);
     bool verifyConfig(std::span<const uint32_t> keys);
+    // Issue #40: the receiver can come out of boot with the GNSS engine
+    // stopped while the config interface answers normally, so startup
+    // completes "successfully" on a dead receiver. CFG-RST "GNSS start" is
+    // a no-op on a running engine and revives a stopped one.
+    void sendGnssEngineStart();
     // Sends UBX-MON-VER poll and feeds the reply (or any pending data) to the
     // parser for up to `timeoutMs`. The MON-VER callback registered with
     // UbxParser populates Gnss::instance().swVersion()/hwVersion()/extensions.

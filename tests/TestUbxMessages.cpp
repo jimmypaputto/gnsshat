@@ -8,6 +8,7 @@
 #include "ublox/ubxmsg/UBX_MON_RF.hpp"
 #include "ublox/ubxmsg/UBX_MON_SYS.hpp"
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
+#include "ublox/ubxmsg/UBX_CFG_RST.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
 #include "ublox/UbxParser.hpp"
 #include "common/Utils.hpp"
@@ -506,4 +507,24 @@ TEST(CfgValset, DifferentLayerBBR)
     auto frame = UBX_CFG_VALSET::setU1(0x20640001, 0x01, EUbxMemoryLayer::BBR);
     EXPECT_TRUE(JimmyPaputto::UbxParser::checkFrame(frame));
     EXPECT_EQ(frame[7], 0x02); // layer byte = BBR
+}
+
+TEST(CfgRst, HotStartFrame)
+{
+    const auto frame = UBX_CFG_RST::hotStart();
+    EXPECT_TRUE(JimmyPaputto::UbxParser::checkFrame(frame));
+    const std::vector<uint8_t> expected = {
+        0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x0F, 0x66
+    };
+    EXPECT_EQ(frame, expected);
+}
+
+TEST(CfgRst, StartGnssFrame)
+{
+    const auto frame = UBX_CFG_RST::startGnss();
+    EXPECT_TRUE(JimmyPaputto::UbxParser::checkFrame(frame));
+    const std::vector<uint8_t> expected = {
+        0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x09, 0x00, 0x17, 0x76
+    };
+    EXPECT_EQ(frame, expected);
 }
