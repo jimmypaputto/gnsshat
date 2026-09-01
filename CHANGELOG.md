@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Navigation notifications no longer fire twice per epoch. `M9NRun::execute()`
+  notified once per SPI drain pass, but the module splits its 1 Hz output into
+  two bursts: the four NAV messages together, then MON-SYS/RF/SPAN roughly
+  800 ms later. The second pass carried no fresh navigation yet still woke every
+  consumer, so `waitAndGetFreshNavigation()` returned ~2 Hz and half the
+  snapshots paired a new PVT with the previous epoch's DOP/SAT. Both run
+  strategies now notify only after parsing a buffer that carried NAV-PVT, which
+  also removes the F10T-only callback notification path. Measured over 1200
+  epochs: 2398 drain passes, all four NAV messages in a single pass in every
+  epoch, 0 epochs split across passes
 - gpsd bridge no longer forwards empty NMEA forever after boot. The receiver
   can come out of boot with the GNSS engine stopped while the config interface
   (VALGET/VALSET/ACK) answers normally, so startup completed "successfully"

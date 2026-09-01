@@ -23,10 +23,16 @@ class UbxParser final
 {
 public:
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
-        Notifier& navigationNotifier, Notifier& timeMarkNotifier,
-        bool callbackNotificationEnabled = true);
+        Notifier& timeMarkNotifier);
 
     std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
+
+    // True when the buffer just parsed carried a NAV-PVT frame, i.e. a new
+    // navigation epoch reached Gnss.
+    bool consumeNavigationEpoch()
+    {
+        return ubxCallbacks_.consumeNavigationEpoch();
+    }
 
     static void addChecksum(std::vector<uint8_t>& frame);
     static std::array<uint8_t, 2> checksum(std::span<const uint8_t> frame,

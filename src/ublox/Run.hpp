@@ -56,10 +56,14 @@ private:
 class F10TRun : public IRunStrategy, public RunBase
 {
 public:
-    F10TRun(ICommDriver& commDriver, UbxParser& ubxParser);
+    F10TRun(ICommDriver& commDriver, UbxParser& ubxParser,
+        Notifier& navigationNotifier);
     ~F10TRun() override = default;
 
     void execute(std::stop_token stoken) override;
+
+private:
+    Notifier& navigationNotifier_;
 };
 
 class F9PRun : public M9NRun

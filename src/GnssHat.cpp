@@ -52,7 +52,9 @@ std::enable_if_t<
     }
     else if constexpr (std::is_same_v<RunStrategy, F10TRun>)
     {
-        return std::make_unique<F10TRun>(commDriver, ubxParser);
+        return std::make_unique<F10TRun>(
+            commDriver, ubxParser, navigationNotifier
+        );
     }
 }
 
@@ -438,11 +440,8 @@ bool GnssHat::start(const GnssConfig& config)
 
     config_ = config;
     configRegistry_ = std::make_unique<UbloxConfigRegistry>(config_);
-    constexpr bool callbackNotificationEnabled =
-        std::is_same_v<RunStrategy, F10TRun>;
     ubxParser_ = std::make_unique<UbxParser>(
-        *configRegistry_, navigationNotifier_, timeMarkNotifier_,
-        callbackNotificationEnabled
+        *configRegistry_, timeMarkNotifier_
     );
     startupStrategy_ = std::make_unique<StartupStrategy>(
         *commDriver_, *configRegistry_, *ubxParser_
