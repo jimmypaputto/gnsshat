@@ -25,12 +25,10 @@ namespace JimmyPaputto
 {
 
 UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
-    Notifier& navigationNotifier, Notifier& timeMarkNotifier,
-    bool callbackNotificationEnabled)
+    Notifier& timeMarkNotifier)
 :   endFrameIt_(frames_.end()),
     configRegistry_(configRegistry),
-    ubxCallbacks_(configRegistry, navigationNotifier, timeMarkNotifier,
-        callbackNotificationEnabled)
+    ubxCallbacks_(configRegistry, timeMarkNotifier)
 {
     constexpr uint16_t maxFrameSize = 1024;
     unfinishedFrameFromBuffer_.reserve(maxFrameSize);

@@ -68,11 +68,17 @@ void M9NRun::execute(std::stop_token stoken)
     );
     runRxBuffOffset_ = unfinishedFrame.size();
 
-    navigationNotifier_.notify();
+    // Only a pass carrying NAV-PVT is a new epoch: the module bursts the four
+    // NAV messages together and MON-* alone some 800 ms later, which used to
+    // raise a second wakeup per epoch with no fresh navigation in it.
+    if (ubxParser_.consumeNavigationEpoch())
+        navigationNotifier_.notify();
 }
 
-F10TRun::F10TRun(ICommDriver& commDriver, UbxParser& ubxParser)
-:   RunBase(commDriver, ubxParser)
+F10TRun::F10TRun(ICommDriver& commDriver, UbxParser& ubxParser,
+    Notifier& navigationNotifier)
+:   RunBase(commDriver, ubxParser),
+    navigationNotifier_(navigationNotifier)
 {
 }
 
@@ -110,6 +116,9 @@ void F10TRun::execute(std::stop_token)
         unfinishedFrame.begin(), unfinishedFrame.end(), runRxBuff_.begin()
     );
     runRxBuffOffset_ = unfinishedFrame.size();
+
+    if (ubxParser_.consumeNavigationEpoch())
+        navigationNotifier_.notify();
 }
 
 F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,

@@ -258,9 +258,8 @@ void NmeaForwarder::forwardingThread(const Gnss& gnss,
         const auto nav = gnss.navigation();
         gnss.unlock();
 
-        // A single epoch may raise more than one notification (M9N/F9P notify
-        // per TX-READY burst); NMEA time has 1 s resolution, so repeating an
-        // epoch would only confuse gpsd.
+        // Guard only: the run loop now notifies once per navigation epoch.
+        // NMEA time has 1 s resolution, so a repeated epoch would confuse gpsd.
         const std::string time = formatTime(nav);
         if (!time.empty())
         {

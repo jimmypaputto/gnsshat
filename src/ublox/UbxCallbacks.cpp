@@ -28,11 +28,8 @@ namespace JimmyPaputto
 {
 
 UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
-    Notifier& navigationNotifier, Notifier& timeMarkNotifier,
-    bool callbackNotificationEnabled)
-:	navigationNotifier_(navigationNotifier),
-    timeMarkNotifier_(timeMarkNotifier),
-    callbackNotificationEnabled_(callbackNotificationEnabled)
+    Notifier& timeMarkNotifier)
+:	timeMarkNotifier_(timeMarkNotifier)
 {
     using enum EUbxMsg;
     callbacks_[to_underlying(UBX_ACK_ACK)] = std::bind(
@@ -125,8 +122,7 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
     callbacks_[to_underlying(UBX_NAV_PVT)] = [this](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxNavPvt = static_cast<ubxmsg::UBX_NAV_PVT&>(ubxMsg);
         Gnss::instance().pvt(ubxNavPvt.pvt());
-        if (callbackNotificationEnabled_)
-            navigationNotifier_.notify();
+        navigationEpochSeen_ = true;
     };
 
     callbacks_[to_underlying(UBX_NAV_SAT)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
