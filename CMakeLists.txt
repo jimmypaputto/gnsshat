@@ -120,6 +120,7 @@ set(LIB_SOURCES
     src/ublox/Rtcm3Store.cpp
     src/ublox/RTK.cpp
     src/ublox/Run.cpp
+    src/ublox/SerialDriver.cpp
     src/ublox/SpiDriver.cpp
     src/ublox/Startup.cpp
     src/ublox/UartDriver.cpp
@@ -128,6 +129,8 @@ set(LIB_SOURCES
     src/ublox/UbxCallbacks.cpp
     src/ublox/UbxFactory.cpp
     src/ublox/UbxParser.cpp
+    src/ublox/UsbDeviceScanner.cpp
+    src/ublox/UsbDriver.cpp
     src/GnssHat.cpp
     src/GnssHat_C.cpp
 )

@@ -4,6 +4,7 @@
 
 #include "Run.hpp"
 
+#include "SerialDriver.hpp"
 #include "UartDriver.hpp"
 
 #include <algorithm>
@@ -84,11 +85,11 @@ F10TRun::F10TRun(ICommDriver& commDriver, UbxParser& ubxParser,
 
 void F10TRun::execute(std::stop_token)
 {    
-    auto& uartDriver = static_cast<UartDriver&>(commDriver_);
+    auto& serialDriver = static_cast<SerialDriver&>(commDriver_);
     constexpr uint32_t parseThreshold = 100;
     const int epollTimeoutMs = (runRxBuffOffset_ > 0) ? 10 : 500;
 
-    const auto incomingBytes = uartDriver.epoll(
+    const auto incomingBytes = serialDriver.epoll(
         runRxBuff_.data() + runRxBuffOffset_,
         runRxBuffSize - runRxBuffOffset_,
         epollTimeoutMs
@@ -167,9 +168,9 @@ F9PRun::~F9PRun()
 
 void F9PRun::executeUartBase()
 {
-    auto& uartDriver = static_cast<UartDriver&>(*uartDriver_);
+    auto& serialDriver = static_cast<SerialDriver&>(*uartDriver_);
     constexpr int epollTimeoutMs = 500;
-    const auto incomingBytes = uartDriver.epoll(
+    const auto incomingBytes = serialDriver.epoll(
         uartBuff_.data() + uartBuffOffset_,
         uartBuffSize - uartBuffOffset_,
         epollTimeoutMs
@@ -202,11 +203,11 @@ void F9PRun::executeUartBase()
 
 void F9PRun::executeUartRover(std::stop_token stoken)
 {
-    auto& uartDriver = static_cast<UartDriver&>(*uartDriver_);
+    auto& serialDriver = static_cast<SerialDriver&>(*uartDriver_);
     const auto incomingFrames = rtcm3Store_.waitForFrames(stoken);
     for (const auto& frame : incomingFrames)
     {
-        uartDriver.transmit(frame);
+        serialDriver.transmit(frame);
     }
 }
 

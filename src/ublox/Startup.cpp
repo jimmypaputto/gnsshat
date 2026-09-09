@@ -16,6 +16,7 @@
 #include "ublox/Geofencing.hpp"
 #include "ublox/Gnss.hpp"
 #include "ublox/SpiDriver.hpp"
+#include "ublox/SerialDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
 #include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
@@ -1136,8 +1137,8 @@ bool F10TStartup::reconfigureCommPort()
 int F10TStartup::pollRxData(uint8_t* rxBuff, const uint32_t size,
     int timeoutMs)
 {
-    auto& uartDriver = static_cast<UartDriver&>(commDriver_);
-    return uartDriver.epoll(rxBuff, size, timeoutMs);
+    auto& serialDriver = static_cast<SerialDriver&>(commDriver_);
+    return serialDriver.epoll(rxBuff, size, timeoutMs);
 }
 
 bool F10TStartup::timeBaseStartup()
