@@ -53,6 +53,15 @@ public:
             0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0xFF, 0xFF, 0x02, 0x00
         });
     }
+
+    // navBbrMask=0x0000 (hot start), resetMode=0x02 (GNSS-only reset), for the
+    // same reason coldStartGnssOnly() avoids mode 0x01.
+    static std::vector<uint8_t> hotStartGnssOnly()
+    {
+        return buildFrame( {
+            0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00
+        });
+    }
 };
 
 }  // JimmyPaputto::ubxmsg

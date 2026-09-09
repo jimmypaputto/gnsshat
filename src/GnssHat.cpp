@@ -395,13 +395,24 @@ public:
     // reset would re-enumerate the endpoint and invalidate our descriptor.
     void hardResetUbloxSom_ColdStart() const override
     {
-        const auto txBuffer = ubxmsg::UBX_CFG_RST::coldStartGnssOnly();
-        std::vector<uint8_t> rxBuffer(txBuffer.size());
-        commDriver_->transmitReceive(txBuffer, rxBuffer);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        sendReset(ubxmsg::UBX_CFG_RST::coldStartGnssOnly());
+    }
+
+    void softResetUbloxSom_HotStart() override
+    {
+        sendReset(ubxmsg::UBX_CFG_RST::hotStartGnssOnly());
     }
 
 protected:
+    void sendReset(const std::vector<uint8_t>& frame) const
+    {
+        std::vector<uint8_t> rxBuffer(frame.size());
+        commDriver_->transmitReceive(frame, rxBuffer);
+        // The engine is deaf while it restarts; give it time so the first
+        // startup poll does not go into the void.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+
     static void reportNoTimepulsePin()
     {
         fprintf(

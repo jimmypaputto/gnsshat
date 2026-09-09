@@ -63,13 +63,16 @@ void SerialDriver::transmitReceive(std::span<const uint8_t> txBuff,
     const ssize_t written = write(fd_, txBuff.data(), txBuff.size());
     if (written != static_cast<ssize_t>(txBuff.size()))
     {
-        printf(
+        fprintf(
+            stderr,
             "%s Error: Failed to write all data, expected: %zu, "
             "written: %ld\n",
             logTag_,
             txBuff.size(),
             written
         );
+        if (written < 0)
+            perror("[SERIAL] write");
     }
 
     getRxBuff(rxBuff.data(), rxBuff.size());
@@ -208,13 +211,16 @@ void SerialDriver::transmit(std::span<const uint8_t> txBuff)
     const ssize_t written = write(fd_, txBuff.data(), txBuff.size());
     if (written != static_cast<ssize_t>(txBuff.size()))
     {
-        printf(
+        fprintf(
+            stderr,
             "%s Error: Failed to write all data, expected: %zu, "
             "written: %ld\n",
             logTag_,
             txBuff.size(),
             written
         );
+        if (written < 0)
+            perror("[SERIAL] write");
     }
 }
 
