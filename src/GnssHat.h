@@ -546,9 +546,27 @@ typedef struct
     uint32_t count;
 } jp_gnss_rtk_corrections_t;
 
+typedef enum
+{
+    JP_GNSS_UBLOX_MODEL_UNKNOWN = 0,
+    JP_GNSS_UBLOX_MODEL_NEO_M9N = 1,
+    JP_GNSS_UBLOX_MODEL_NEO_F9P = 2
+} jp_gnss_ublox_model_t;
+
 typedef struct jp_gnss_hat jp_gnss_hat_t;
 
 jp_gnss_hat_t* jp_gnss_hat_create(void);
+
+/* Opens a u-blox receiver attached over USB rather than the HAT header.
+ * Pass NULL for device_path to use the only receiver present; that aborts when
+ * none is attached, or when several are and no path was given.
+ * Timepulse and time mark are unavailable on the returned handle. */
+jp_gnss_hat_t* jp_gnss_hat_create_usb(const char* device_path);
+
+/* NULL unless the handle came from jp_gnss_hat_create_usb. */
+const char* jp_gnss_hat_usb_device_path(jp_gnss_hat_t* hat);
+jp_gnss_ublox_model_t jp_gnss_hat_usb_model(jp_gnss_hat_t* hat);
+const char* jp_gnss_ublox_model_to_string(jp_gnss_ublox_model_t model);
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start(jp_gnss_hat_t* hat,

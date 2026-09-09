@@ -1740,11 +1740,30 @@ static PyObject* GnssHat_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
 
 static int GnssHat_init(GnssHat* self, PyObject* args, PyObject* kwds)
 {
-    self->hat = jp_gnss_hat_create();
+    static char* kwlist[] = {"usb", "device_path", NULL};
+    int usb = 0;
+    const char* device_path = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|pz", kwlist,
+            &usb, &device_path))
+    {
+        return -1;
+    }
+
+    /* A device path can only name a USB receiver. */
+    if (device_path)
+        usb = 1;
+
+    self->hat = usb
+        ? jp_gnss_hat_create_usb(device_path)
+        : jp_gnss_hat_create();
+
     if (self->hat)
         return 0;
 
-    PyErr_SetString(PyExc_RuntimeError, "Failed to create GNSS HAT instance");
+    PyErr_SetString(PyExc_RuntimeError, usb
+        ? "Failed to open u-blox USB receiver"
+        : "Failed to create GNSS HAT instance");
     return -1;
 }
 
@@ -3594,7 +3613,42 @@ static PyObject* GnssHat_exit(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject* GnssHat_usb_device_path(GnssHat* self,
+    PyObject* Py_UNUSED(ignored))
+{
+    const char* path = self->hat
+        ? jp_gnss_hat_usb_device_path(self->hat)
+        : NULL;
+
+    if (!path)
+        Py_RETURN_NONE;
+
+    return PyUnicode_FromString(path);
+}
+
+static PyObject* GnssHat_usb_model(GnssHat* self,
+    PyObject* Py_UNUSED(ignored))
+{
+    const jp_gnss_ublox_model_t model = self->hat
+        ? jp_gnss_hat_usb_model(self->hat)
+        : JP_GNSS_UBLOX_MODEL_UNKNOWN;
+
+    return PyUnicode_FromString(jp_gnss_ublox_model_to_string(model));
+}
+
 static PyMethodDef GnssHat_methods[] = {
+    {
+        "usb_device_path",
+        (PyCFunction)GnssHat_usb_device_path,
+        METH_NOARGS,
+        "Device node of the USB receiver, or None when this handle is a HAT"
+    },
+    {
+        "usb_model",
+        (PyCFunction)GnssHat_usb_model,
+        METH_NOARGS,
+        "u-blox model detected over USB: 'NEO-M9N', 'NEO-F9P' or 'Unknown'"
+    },
     {
         "start",
         (PyCFunction)GnssHat_start,
