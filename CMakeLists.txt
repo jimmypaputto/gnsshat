@@ -126,6 +126,7 @@ set(LIB_SOURCES
     src/ublox/UartDriver.cpp
     src/ublox/Ublox.cpp
     src/ublox/UbloxConfigRegistry.cpp
+    src/ublox/UbloxProbe.cpp
     src/ublox/UbxCallbacks.cpp
     src/ublox/UbxFactory.cpp
     src/ublox/UbxParser.cpp
@@ -301,6 +302,7 @@ install(
         src/ublox/EFixStatus.hpp
         src/ublox/EFixType.hpp
         src/ublox/ERtkMode.hpp
+        src/ublox/EUbloxModel.hpp
         src/ublox/Geofence.hpp
         src/ublox/Geofencing.hpp
         src/ublox/GnssConfig.hpp

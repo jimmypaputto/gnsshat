@@ -46,6 +46,17 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_UART2OUTPROT_NMEA,   1},
     {UbxCfgKeys::CFG_UART2OUTPROT_RTCM3X, 1},
 
+    {UbxCfgKeys::CFG_USB_ENABLED, 1},
+
+    {UbxCfgKeys::CFG_USBINPROT_UBX,    1},
+    {UbxCfgKeys::CFG_USBINPROT_NMEA,   1},
+    {UbxCfgKeys::CFG_USBINPROT_RTCM3X, 1},
+    {UbxCfgKeys::CFG_USBINPROT_SPARTN, 1},
+
+    {UbxCfgKeys::CFG_USBOUTPROT_UBX,    1},
+    {UbxCfgKeys::CFG_USBOUTPROT_NMEA,   1},
+    {UbxCfgKeys::CFG_USBOUTPROT_RTCM3X, 1},
+
     {UbxCfgKeys::CFG_TXREADY_ENABLED,   1},
     {UbxCfgKeys::CFG_TXREADY_POLARITY,  1},
     {UbxCfgKeys::CFG_TXREADY_PIN,       1},
@@ -93,6 +104,14 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_SPI,      1},
     {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_SPI, 1},
 
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_USB,     1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_USB,       1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_USB,      1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_USB,      1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_USB,      1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_USB,      1},
+    {UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_USB, 1},
+
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_UART2, 1},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_UART2, 1},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1077_UART2, 1},
@@ -103,6 +122,17 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1124_UART2, 1},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1127_UART2, 1},
     {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1230_UART2, 1},
+
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1077_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1084_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1087_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1094_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1097_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1124_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1127_USB, 1},
+    {UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1230_USB, 1},
 
     {UbxCfgKeys::CFG_GEOFENCE_CONFLVL,     1},
     {UbxCfgKeys::CFG_GEOFENCE_USE_PIO,     1},

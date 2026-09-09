@@ -42,6 +42,17 @@ public:
             0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x09, 0x00
         });
     }
+
+    // navBbrMask=0xFFFF (cold start), resetMode=0x02 (GNSS-only reset).
+    // Stands in for the reset GPIO on transports that have none. Mode 0x01
+    // would reboot the whole receiver, dropping and re-enumerating the USB
+    // endpoint and invalidating the caller's file descriptor.
+    static std::vector<uint8_t> coldStartGnssOnly()
+    {
+        return buildFrame( {
+            0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0xFF, 0xFF, 0x02, 0x00
+        });
+    }
 };
 
 }  // JimmyPaputto::ubxmsg
