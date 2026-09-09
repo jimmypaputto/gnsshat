@@ -9,11 +9,12 @@ A Flask + Socket.IO server streams navigation data to the browser — runs on Ra
 
 ## Operating Modes
 
-The application supports **three data source modes**:
+The application supports **four data source modes**:
 
 | Mode | Description | Requirements |
 |------|-------------|--------------|
 | `native` | Direct module communication via the GnssHat library (SPI) | Installed `jimmypaputto` (GnssHat) library |
+| `usb` | Same library, against a receiver on a host USB port (CDC-ACM) | Installed `jimmypaputto` library, u-blox receiver on USB |
 | `external_tty` | NMEA sentence reading from a serial port (`/dev/jimmypaputto/gnss`) | `pyserial`, `pynmea2`, connected UART port |
 | `ros2` | ROS 2 topic subscription to `/gnss/navigation` | ROS 2 environment, `jp_gnss_hat` package |
 
@@ -39,6 +40,24 @@ python3 app.py
 # or explicitly:
 python3 app.py native
 ```
+
+### USB Mode
+
+Same library and the same UI as native mode, but the receiver is reached over a
+host USB port instead of the HAT header. No root privileges needed as long as
+your user is in the `dialout` group.
+
+```bash
+python3 app.py usb
+
+# Name the device when more than one u-blox receiver is attached; the library
+# refuses to guess. Prefer the by-path alias, it survives reboots.
+python3 app.py usb --device /dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.0
+```
+
+The model (NEO-M9N or F9P) is detected from UBX-MON-VER, and the RTK/NTRIP
+panels appear automatically on an F9P. The Timepulse section is greyed out:
+that pin is on the HAT header and drives nothing over USB.
 
 ### External TTY Mode
 

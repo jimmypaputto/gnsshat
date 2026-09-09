@@ -2364,6 +2364,20 @@ function setupConfigPanel() {
 
     if (!tpActive) return; // config panel not in DOM
 
+    // The timepulse pin is on the HAT header, so it drives nothing over USB.
+    // The fieldset stays in the DOM because the rest of this function keys off
+    // it, but the controls are locked out.
+    if (window.APP_TRANSPORT === 'usb') {
+        tpActive.checked = false;
+        tpActive.disabled = true;
+        if (tpDetails) tpDetails.style.display = 'none';
+        const tpSection = document.getElementById('cfg-tp-section');
+        if (tpSection) {
+            tpSection.style.opacity = '0.5';
+            tpSection.title = 'Timepulse needs the HAT header GPIO and is not available over USB';
+        }
+    }
+
     // Toggle timepulse details
     tpActive.addEventListener('change', () => {
         tpDetails.style.display = tpActive.checked ? '' : 'none';
@@ -3610,7 +3624,7 @@ async function serverStop() {
 
 async function restoreNtripStatus() {
     // On page load, check if NTRIP client/caster is already running (survives page refresh)
-    if (window.APP_MODE !== 'native' || window.HAT_NAME !== 'L1/L5 GNSS RTK HAT') return;
+    if (window.APP_MODE !== 'native' || !window.RTK_AVAILABLE) return;
 
     // Restore client status
     try {

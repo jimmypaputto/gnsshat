@@ -266,19 +266,39 @@ logging.getLogger().addFilter(_WerkzeugWsRaceFilter())
 SERIAL_PORT = '/dev/jimmypaputto/gnss'
 BAUD_RATE = 9600
 
-# Operating mode: 'native' or 'external_tty'
+# Operating mode: 'native', 'usb', 'external_tty' or 'ros2'
 RUN_MODE = 'native'
+
+# Device node for usb mode; None lets the library pick the only receiver found
+USB_DEVICE_PATH = None
 
 # Optional ROS 2 node name (e.g. 'rover', 'base') — changes topic prefix
 ROS2_NODE_NAME = None
 
-# Whitelist of valid HAT names sourced from the firmware (src/GnssHat.cpp).
+# Whitelist of valid receiver names sourced from the firmware (src/GnssHat.cpp).
 # Only frame_id values that match one of these strings will be accepted.
 KNOWN_HAT_NAMES = frozenset({
     'L1 GNSS HAT',
     'L1/L5 GNSS TIME HAT',
     'L1/L5 GNSS RTK HAT',
+    'u-blox USB GNSS receiver',
+    'u-blox USB GNSS RTK receiver',
 })
+
+# Receivers that expose IRtk, whichever port they are attached to.
+RTK_CAPABLE_NAMES = frozenset({
+    'L1/L5 GNSS RTK HAT',
+    'u-blox USB GNSS RTK receiver',
+})
+
+
+def _uses_gnsshat_library():
+    """native and usb differ only in how the receiver is opened."""
+    return RUN_MODE in ('native', 'usb')
+
+
+def _has_rtk():
+    return gps_state.get('hat_name') in RTK_CAPABLE_NAMES
 
 # Global state
 gps_state = {
@@ -467,8 +487,8 @@ def start_ntrip(config):
     if hat is None:
         return False, 'GNSS HAT not initialized'
 
-    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
-        return False, 'NTRIP requires L1/L5 GNSS RTK HAT'
+    if not _has_rtk():
+        return False, 'NTRIP requires an RTK receiver'
 
     caster_host = config.get('caster', '')
     port = int(config.get('port', 2101))
@@ -574,8 +594,8 @@ def start_caster(config):
     if hat is None:
         return False, 'GNSS HAT not initialized'
 
-    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
-        return False, 'Caster requires L1/L5 GNSS RTK HAT'
+    if not _has_rtk():
+        return False, 'Caster requires an RTK receiver'
 
     port = int(config.get('port', 2101))
     mountpoint = config.get('mountpoint', 'GNSS')
@@ -707,8 +727,8 @@ def start_server(config):
     if hat is None:
         return False, 'GNSS HAT not initialized'
 
-    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
-        return False, 'NtripServer requires L1/L5 GNSS RTK HAT'
+    if not _has_rtk():
+        return False, 'NtripServer requires an RTK receiver'
 
     host = config.get('host', '').strip()
     port = int(config.get('port', 2101))
@@ -1008,7 +1028,8 @@ def create_default_config():
         'measurement_rate_hz': 1,
         'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
-            'active': True,
+            # The pin sits on the HAT header, so it goes nowhere over USB.
+            'active': RUN_MODE != 'usb',
             'fixed_pulse': {
                 'frequency': 1,
                 'pulse_width': 0.1
@@ -1902,7 +1923,12 @@ def index():
         tls_available = gnsshat.NtripCaster.is_tls_available()
     except Exception:
         pass
-    return render_template('index.html', mode=RUN_MODE,
+    # A USB receiver drives the same panels as a HAT, so the UI is told
+    # 'native' and gets the transport separately for the few pin-bound bits.
+    return render_template('index.html',
+                           mode=('native' if RUN_MODE == 'usb' else RUN_MODE),
+                           transport=('usb' if RUN_MODE == 'usb' else 'hat'),
+                           rtk_available=_has_rtk(),
                            hat_name=gps_state.get('hat_name'),
                            tls_available=tls_available,
                            ui_info=_build_ui_info())
@@ -2140,10 +2166,10 @@ def handle_reset_reference():
 @app.route('/api/ntrip/start', methods=['POST'])
 def api_ntrip_start():
     """Start NTRIP client with given connection parameters."""
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'NTRIP client only available in native mode'}), 400
-    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
-        return jsonify({'error': 'NTRIP requires L1/L5 GNSS RTK HAT'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'NTRIP client only available in native or usb mode'}), 400
+    if not _has_rtk():
+        return jsonify({'error': 'NTRIP requires an RTK receiver'}), 400
 
     data = request.get_json()
     if not data:
@@ -2163,8 +2189,8 @@ def api_ntrip_start():
 @app.route('/api/ntrip/stop', methods=['POST'])
 def api_ntrip_stop():
     """Stop NTRIP client."""
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'NTRIP client only available in native mode'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'NTRIP client only available in native or usb mode'}), 400
 
     stop_ntrip()
     return jsonify({'success': True})
@@ -2258,10 +2284,10 @@ def api_ntrip_sourcetable():
 @app.route('/api/caster/start', methods=['POST'])
 def api_caster_start():
     """Start NTRIP caster for RTK base mode"""
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'Caster only available in native mode'}), 400
-    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
-        return jsonify({'error': 'Caster requires L1/L5 GNSS RTK HAT'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'Caster only available in native or usb mode'}), 400
+    if not _has_rtk():
+        return jsonify({'error': 'Caster requires an RTK receiver'}), 400
 
     data = request.get_json()
     if not data:
@@ -2287,8 +2313,8 @@ def api_caster_start():
 @app.route('/api/caster/stop', methods=['POST'])
 def api_caster_stop():
     """Stop NTRIP caster"""
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'Caster only available in native mode'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'Caster only available in native or usb mode'}), 400
 
     stop_caster()
     _safe_emit('caster_status',
@@ -2328,10 +2354,10 @@ def api_caster_stats():
 @app.route('/api/ntrip-server/start', methods=['POST'])
 def api_server_start():
     """Start NtripServer to push corrections to a remote caster."""
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'NtripServer only available in native mode'}), 400
-    if gps_state.get('hat_name') != 'L1/L5 GNSS RTK HAT':
-        return jsonify({'error': 'NtripServer requires L1/L5 GNSS RTK HAT'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'NtripServer only available in native or usb mode'}), 400
+    if not _has_rtk():
+        return jsonify({'error': 'NtripServer requires an RTK receiver'}), 400
 
     data = request.get_json()
     if not data:
@@ -2346,8 +2372,8 @@ def api_server_start():
 @app.route('/api/ntrip-server/stop', methods=['POST'])
 def api_server_stop():
     """Stop NtripServer."""
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'NtripServer only available in native mode'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'NtripServer only available in native or usb mode'}), 400
     stop_server()
     return jsonify({'success': True})
 
@@ -2574,8 +2600,8 @@ def api_get_config():
     """Get current GnssHat configuration"""
     if RUN_MODE == 'ros2':
         return _ros2_get_config()
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'Configuration only available in native or ros2 mode'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'Configuration only available in native, usb or ros2 mode'}), 400
     if gps_state['current_config']:
         return jsonify(config_to_json_safe(gps_state['current_config']))
     return jsonify({'error': 'No config loaded'}), 404
@@ -2586,8 +2612,8 @@ def api_set_config():
     """Apply new GnssHat configuration — stops reader, destroys hat, creates new one"""
     if RUN_MODE == 'ros2':
         return _ros2_set_config()
-    if RUN_MODE != 'native':
-        return jsonify({'error': 'Configuration only available in native or ros2 mode'}), 400
+    if not _uses_gnsshat_library():
+        return jsonify({'error': 'Configuration only available in native, usb or ros2 mode'}), 400
 
     data = request.get_json()
     if not data:
@@ -2622,7 +2648,7 @@ def api_set_config():
             # 3. Create new hat
             _safe_emit('config_progress', {'step': 'create', 'message': 'Creating new GnssHat object...'}, namespace='/')
             from jimmypaputto import gnsshat
-            hat = gnsshat.GnssHat()
+            hat = _create_receiver(gnsshat)
 
             # 4. Soft hot reset — preserves almanac/ephemeris for fast re-lock
             _safe_emit('config_progress', {'step': 'reset', 'message': 'Resetting module (hot start)...'}, namespace='/')
@@ -2781,7 +2807,7 @@ def _ros2_set_config():
 
 def start_gps():
     """Initialize and start GPS data source based on RUN_MODE"""
-    if RUN_MODE == 'native':
+    if _uses_gnsshat_library():
         return start_gps_native()
     elif RUN_MODE == 'ros2':
         return start_gps_ros2()
@@ -2789,13 +2815,20 @@ def start_gps():
         return start_gps_external_tty()
 
 
+def _create_receiver(gnsshat):
+    """usb mode differs from native only in how the receiver is opened."""
+    if RUN_MODE == 'usb':
+        return gnsshat.GnssHat(usb=True, device_path=USB_DEVICE_PATH)
+    return gnsshat.GnssHat()
+
+
 def start_gps_native():
     """Initialize GnssHat and start native reader thread"""
     from jimmypaputto import gnsshat
 
-    print("Starting GnssHat in native mode...")
+    print(f"Starting GnssHat in {RUN_MODE} mode...")
     try:
-        hat = gnsshat.GnssHat()
+        hat = _create_receiver(gnsshat)
         hat.soft_reset_hot_start()
         config = create_default_config()
         if not hat.start(config):
@@ -2807,6 +2840,9 @@ def start_gps_native():
         gps_state['hat'] = hat
         gps_state['hat_name'] = hat_name
         gps_state['current_config'] = config
+
+        if RUN_MODE == 'usb':
+            print(f"USB receiver: {hat.usb_model()} on {hat.usb_device_path()}")
 
         # Enable time mark trigger if configured
         timing = config.get('timing')
@@ -2930,10 +2966,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='GPS Visualization Server')
     parser.add_argument(
         'mode',
-        choices=['native', 'external_tty', 'ros2'],
+        choices=['native', 'usb', 'external_tty', 'ros2'],
         nargs='?',
         default='native',
-        help='Data source mode: native (GnssHat library), external_tty (NMEA serial), or ros2 (ROS 2 topic). Default: native'
+        help='Data source mode: native (GnssHat library over the HAT header), usb (GnssHat library over USB CDC-ACM), external_tty (NMEA serial) or ros2 (ROS 2 topic). Default: native'
     )
     parser.add_argument(
         'node_name',
@@ -2941,9 +2977,15 @@ if __name__ == '__main__':
         default=None,
         help='Optional ROS 2 node name (e.g. rover, base). Changes topic prefix to /gnss/<node_name>/...'
     )
+    parser.add_argument(
+        '--device',
+        default=None,
+        help='Device node for usb mode. Omit to use the only receiver attached; required when several are'
+    )
     args = parser.parse_args()
     RUN_MODE = args.mode
     ROS2_NODE_NAME = args.node_name
+    USB_DEVICE_PATH = args.device
 
     print("=" * 60)
     print("GPS Visualization Server - Jimmy Paputto 2025")
@@ -2955,6 +2997,9 @@ if __name__ == '__main__':
         print(f"Subscribing to ROS 2 topic {nav_topic}")
         if ROS2_NODE_NAME:
             print(f"Node name: {ROS2_NODE_NAME}")
+    elif RUN_MODE == 'usb':
+        print(f"Using GnssHat native library over USB: "
+              f"{USB_DEVICE_PATH or 'auto-detected receiver'}")
     else:
         print("Using GnssHat native library")
     print("=" * 60)

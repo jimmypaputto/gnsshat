@@ -343,7 +343,7 @@
                     <div class="data-tabs">
                         <button class="data-tab active" data-dtab="navdata">📊 Navigation Data</button>
                         <button class="data-tab" data-dtab="config">⚙️ Configuration</button>
-                        {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
+                        {% if mode == 'native' and rtk_available %}
                         <button class="data-tab" data-dtab="ntrip">📡 NTRIP</button>
                         {% endif %}
                     </div>
@@ -745,7 +745,7 @@
                         </fieldset>
 
                         <!-- Timepulse -->
-                        <fieldset class="cfg-section">
+                        <fieldset class="cfg-section" id="cfg-tp-section">
                             <legend>⏱️ Timepulse Pin</legend>
                             <div class="cfg-row">
                                 <label for="cfg-tp-active">Active</label>
@@ -1048,7 +1048,7 @@
                 </div>
                 {% endif %}
 
-                {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
+                {% if mode == 'native' and rtk_available %}
                 <!-- NTRIP pane (Client for Rover, Caster for Base) -->
                 <div id="ntrip-pane" class="data-pane" style="display:none;">
                     <div class="config-form">
@@ -1322,6 +1322,8 @@
 
     <script>
         window.APP_MODE = '{{ mode }}';
+        window.APP_TRANSPORT = '{{ transport }}';
+        window.RTK_AVAILABLE = {{ 'true' if rtk_available else 'false' }};
         window.HAT_NAME = '{{ hat_name or '' }}';
     </script>
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
