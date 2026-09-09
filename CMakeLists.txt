@@ -130,6 +130,7 @@ set(LIB_SOURCES
     src/ublox/UbxCallbacks.cpp
     src/ublox/UbxFactory.cpp
     src/ublox/UbxParser.cpp
+    src/ublox/UbxRtcmDemux.cpp
     src/ublox/UsbDeviceScanner.cpp
     src/ublox/UsbDriver.cpp
     src/GnssHat.cpp

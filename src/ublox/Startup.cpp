@@ -1386,4 +1386,314 @@ bool F9PStartup::rtkRoverStartup()
     return true;
 }
 
+M9NUsbStartup::M9NUsbStartup(ICommDriver& commDriver,
+    IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
+:   M9NStartup(commDriver, configRegistry, ubxParser)
+{
+}
+
+int M9NUsbStartup::pollRxData(uint8_t* rxBuff, const uint32_t size,
+    int timeoutMs)
+{
+    auto& serialDriver = static_cast<SerialDriver&>(commDriver_);
+    return serialDriver.epoll(rxBuff, size, timeoutMs);
+}
+
+bool M9NUsbStartup::execute()
+{
+    bool result = false;
+
+    constexpr std::array<uint32_t, 1> usbKeys = {
+        UbxCfgKeys::CFG_USB_ENABLED
+    };
+    result = configure(usbKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] USB port configuration failed\r\n");
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 2> usbInProtKeys = {
+        UbxCfgKeys::CFG_USBINPROT_UBX,
+        UbxCfgKeys::CFG_USBINPROT_NMEA
+    };
+    result = configure(usbInProtKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] USB input protocol configuration failed\r\n"
+        );
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 2> usbOutProtKeys = {
+        UbxCfgKeys::CFG_USBOUTPROT_UBX,
+        UbxCfgKeys::CFG_USBOUTPROT_NMEA
+    };
+    result = configure(usbOutProtKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] USB output protocol configuration failed\r\n"
+        );
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 1> dynModelKeys = {
+        UbxCfgKeys::CFG_NAVSPG_DYNMODEL
+    };
+    result = configure(dynModelKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Dynamic model configuration failed\r\n");
+        return false;
+    }
+
+    result = configure(navigationFilterKeys_);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Navigation filter configuration failed\r\n");
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 4> geofenceCommonKeys = {
+        UbxCfgKeys::CFG_GEOFENCE_CONFLVL,
+        UbxCfgKeys::CFG_GEOFENCE_USE_PIO,
+        UbxCfgKeys::CFG_GEOFENCE_PINPOL,
+        UbxCfgKeys::CFG_GEOFENCE_PIN
+    };
+    result = configure(geofenceCommonKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Geofence common configuration failed\r\n");
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 16> geofenceFenceKeys = {
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE1,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE1_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE2,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE2_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE3,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE3_RAD,
+        UbxCfgKeys::CFG_GEOFENCE_USE_FENCE4,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_LAT,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_LON,
+        UbxCfgKeys::CFG_GEOFENCE_FENCE4_RAD
+    };
+    result = configure(geofenceFenceKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Geofence fences configuration failed\r\n");
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 3> rateKeys = {
+        UbxCfgKeys::CFG_RATE_MEAS,
+        UbxCfgKeys::CFG_RATE_NAV,
+        UbxCfgKeys::CFG_RATE_TIMEREF
+    };
+    result = configure(rateKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Rate configuration failed\r\n");
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 6> msgoutKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_USB,
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_USB,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_DOP_USB,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_PVT_USB,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_SAT_USB,
+        UbxCfgKeys::CFG_MSGOUT_UBX_NAV_GEOFENCE_USB
+    };
+    result = configure(msgoutKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Message output configuration failed\r\n");
+        return false;
+    }
+
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
+
+    sendGnssEngineStart();
+
+    pollMonVer();
+    return true;
+}
+
+F9PUsbStartup::F9PUsbStartup(ICommDriver& commDriver,
+    IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser)
+:   M9NUsbStartup(commDriver, configRegistry, ubxParser)
+{
+    auto config = configRegistry.getGnssConfig();
+
+    auto& ecv = StartupBase::expectedConfigValues_;
+
+    ecv[UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA]     = {0x01};
+    ecv[UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD] = {0x01};
+
+    ecv[UbxCfgKeys::CFG_USBINPROT_SPARTN] = {0x00};
+    ecv[UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_USB] = {0x01};
+
+    ecv[UbxCfgKeys::CFG_USBINPROT_RTCM3X]  = {0x00};
+    ecv[UbxCfgKeys::CFG_USBOUTPROT_RTCM3X] = {0x00};
+
+    if (config.rtk == std::nullopt)
+    {
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
+        return;
+    }
+
+    base_ = config.rtk->mode == ERtkMode::Base && config.rtk->base.has_value();
+    if (!base_)
+    {
+        rover_ = true;
+        // Corrections travel back up the same endpoint the receiver streams
+        // UBX on, so RTCM3 has to be accepted as input there.
+        ecv[UbxCfgKeys::CFG_USBINPROT_RTCM3X] = {0x01};
+        ecv[UbxCfgKeys::CFG_TMODE_MODE] =
+            {static_cast<uint8_t>(CFG_TMODE_MODE::DISABLED)};
+        return;
+    }
+
+    ecv[UbxCfgKeys::CFG_USBOUTPROT_RTCM3X] = {0x01};
+    baseConfig2Registers(config.rtk->base.value());
+}
+
+bool F9PUsbStartup::execute()
+{
+    bool result = M9NUsbStartup::execute();
+    if (!result)
+        return false;
+
+    configRegistry_.shouldSaveConfigToFlash(false);
+
+    constexpr std::array<uint32_t, 2> l5SignalKeys = {
+        UbxCfgKeys::CFG_SIGNAL_GPS_L5_ENA,
+        UbxCfgKeys::CFG_SIGNAL_L5_HEALTH_OVRD
+    };
+    result = configure(l5SignalKeys);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] L5 signal configuration failed\r\n");
+        return false;
+    }
+
+    // required to wait for constellation specific subsystem restart
+    if (configRegistry_.shouldSaveConfigToFlash())
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    constexpr std::array<uint32_t, 3> usbProtF9PKeys = {
+        UbxCfgKeys::CFG_USBINPROT_RTCM3X,
+        UbxCfgKeys::CFG_USBINPROT_SPARTN,
+        UbxCfgKeys::CFG_USBOUTPROT_RTCM3X
+    };
+    result = configure(usbProtF9PKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] USB protocol (RTCM3X/SPARTN) configuration failed\r\n"
+        );
+        return false;
+    }
+
+    constexpr std::array<uint32_t, 1> monSysUsbKeys = {
+        UbxCfgKeys::CFG_MSGOUT_UBX_MON_SYS_USB
+    };
+    result = configure(monSysUsbKeys);
+    if (!result)
+    {
+        fprintf(
+            stderr,
+            "[Startup] UBX-MON-SYS USB message output configuration failed\r\n"
+        );
+        return false;
+    }
+
+    if (base_)
+    {
+        result = rtkBaseStartup();
+        if (!result)
+            return false;
+    }
+    else
+    {
+        constexpr std::array<uint32_t, 1> tmodeDisableKey = {
+            UbxCfgKeys::CFG_TMODE_MODE
+        };
+        result = configure(tmodeDisableKey);
+        if (!result)
+        {
+            fprintf(stderr, "[Startup] TMODE disable configuration failed\r\n");
+            return false;
+        }
+        // Rover input is already covered by CFG-USBINPROT-RTCM3X above.
+    }
+
+    if (configRegistry_.getGnssConfig().saveToFlash
+        && configRegistry_.shouldSaveConfigToFlash())
+    {
+        result = try3times([this](){ return saveCurrentConfigToFlash(); });
+        if (!result)
+        {
+            fprintf(
+                stderr,
+                "[Startup] Save current configuration to flash failed\r\n"
+            );
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool F9PUsbStartup::rtkBaseStartup()
+{
+    const auto& baseConfig = configRegistry_.getGnssConfig().rtk->base;
+    if (!baseConfig.has_value())
+        return false;
+
+    const auto tmodeKeys = baseConfig2Keys(baseConfig.value());
+    if (!configure(tmodeKeys))
+        return false;
+
+    constexpr std::array<uint32_t, 10> rtcm3MsgKeys = {
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1005_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1074_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1077_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1084_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1087_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1094_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1097_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1124_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1127_USB,
+        UbxCfgKeys::CFG_MSGOUT_RTCM_3X_TYPE1230_USB
+    };
+    return configure(rtcm3MsgKeys);
+}
+
 }  // JimmyPaputto

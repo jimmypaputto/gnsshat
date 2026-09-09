@@ -22,6 +22,9 @@
 #include "ublox/TxReady.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/Ublox.hpp"
+#include "ublox/UbloxProbe.hpp"
+#include "ublox/UsbDeviceScanner.hpp"
+#include "ublox/UsbDriver.hpp"
 #include "ublox/ubxmsg/UBX_CFG_RST.hpp"
 
 
@@ -33,6 +36,9 @@ struct RequiresRtcm3Store : std::false_type {};
 
 template<>
 struct RequiresRtcm3Store<F9PRun> : std::true_type {};
+
+template<>
+struct RequiresRtcm3Store<F9PUsbRun> : std::true_type {};
 
 template<typename RunStrategy>
 std::enable_if_t<
@@ -56,6 +62,12 @@ std::enable_if_t<
             commDriver, ubxParser, navigationNotifier
         );
     }
+    else if constexpr (std::is_same_v<RunStrategy, UsbRun>)
+    {
+        return std::make_unique<UsbRun>(
+            commDriver, ubxParser, navigationNotifier
+        );
+    }
 }
 
 template<typename RunStrategy>
@@ -70,13 +82,22 @@ std::enable_if_t<
     Rtcm3Store& rtcm3Store,
     const GnssConfig& config)
 {
-    return std::make_unique<F9PRun>(
-        commDriver, ubxParser, txReadyNotifier, navigationNotifier, rtcm3Store,
-        config
-    );
+    if constexpr (std::is_same_v<RunStrategy, F9PRun>)
+    {
+        return std::make_unique<F9PRun>(
+            commDriver, ubxParser, txReadyNotifier, navigationNotifier,
+            rtcm3Store, config
+        );
+    }
+    else
+    {
+        return std::make_unique<F9PUsbRun>(
+            commDriver, ubxParser, navigationNotifier, rtcm3Store, config
+        );
+    }
 }
 
-class GnssHat : public IGnssHat
+class GnssHat : public virtual IGnssHat
 {
 public:
     explicit GnssHat(
@@ -314,6 +335,132 @@ private:
     std::unique_ptr<IRtk> rtk_;
 };
 
+class GnssUsb : public GnssHat, public IGnssUsb
+{
+public:
+    GnssUsb(std::string devicePath, UbloxIdentity identity)
+    :   GnssHat(std::make_unique<UsbDriver>(devicePath)),
+        devicePath_(std::move(devicePath)),
+        identity_(std::move(identity))
+    {}
+
+    ~GnssUsb() override
+    {
+        stopSource_.request_stop();
+        stopUbloxThread();
+    }
+
+    bool start(const GnssConfig& config) override
+    {
+        return GnssHat::start<M9NUsbStartup, UsbRun>(config);
+    }
+
+    std::string_view name() const override
+    {
+        return "u-blox USB GNSS receiver";
+    }
+
+    IRtk* rtk() override
+    {
+        return nullptr;
+    }
+
+    std::string devicePath() const override
+    {
+        return devicePath_;
+    }
+
+    EUbloxModel model() const override
+    {
+        return identity_.model;
+    }
+
+    bool enableTimepulse() override
+    {
+        reportNoTimepulsePin();
+        return false;
+    }
+
+    void disableTimepulse() override
+    {
+    }
+
+    void timepulse() override
+    {
+        reportNoTimepulsePin();
+    }
+
+    // No reset line reaches the receiver over USB, so the cold start is
+    // requested in-band. It is scoped to the GNSS subsystem because a full
+    // reset would re-enumerate the endpoint and invalidate our descriptor.
+    void hardResetUbloxSom_ColdStart() const override
+    {
+        const auto txBuffer = ubxmsg::UBX_CFG_RST::coldStartGnssOnly();
+        std::vector<uint8_t> rxBuffer(txBuffer.size());
+        commDriver_->transmitReceive(txBuffer, rxBuffer);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+
+protected:
+    static void reportNoTimepulsePin()
+    {
+        fprintf(
+            stderr,
+            "[GNSS] Timepulse needs the HAT header GPIO and is not available "
+            "over USB\r\n"
+        );
+    }
+
+    std::string devicePath_;
+    UbloxIdentity identity_;
+};
+
+class GnssUsbRtk : public GnssUsb
+{
+public:
+    GnssUsbRtk(std::string devicePath, UbloxIdentity identity)
+    :   GnssUsb(std::move(devicePath), std::move(identity)),
+        rtk_(nullptr)
+    {}
+
+    ~GnssUsbRtk() override
+    {
+        stopSource_.request_stop();
+        stopUbloxThread();
+        runStrategy_.reset();
+    }
+
+    bool start(const GnssConfig& config) override
+    {
+        rtk_ = std::unique_ptr<IRtk>(RtkFactory::create(rtcm3Store_, config));
+        return GnssHat::start<F9PUsbStartup, F9PUsbRun>(config);
+    }
+
+    std::string_view name() const override
+    {
+        return "u-blox USB GNSS RTK receiver";
+    }
+
+    IRtk* rtk() override
+    {
+        return rtk_.get();
+    }
+
+    SystemHealth systemHealth() const override
+    {
+        return gnss_.systemHealth();
+    }
+
+    std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store() override
+    {
+        return std::ref(rtcm3Store_);
+    }
+
+private:
+    Rtcm3Store rtcm3Store_;
+    std::unique_ptr<IRtk> rtk_;
+};
+
 static std::string readHatProduct()
 {
     return Hat::detectProduct();
@@ -356,6 +503,43 @@ IGnssHat* IGnssHat::create()
     std::terminate();
 }
 
+IGnssUsb* IGnssUsb::create(const char* devicePath)
+{
+    const UsbDeviceScanner scanner;
+    const std::string resolved = scanner.resolveSingle(devicePath);
+
+    UbloxIdentity identity;
+    {
+        // Closed before the real driver opens the same node.
+        UsbDriver probeDriver(resolved);
+        if (!probeDriver.isOpen())
+        {
+            fprintf(
+                stderr,
+                "[GNSS] Cannot open USB receiver at %s, FATAL\r\n",
+                resolved.c_str()
+            );
+            std::terminate();
+        }
+        identity = UbloxProbe::identify(probeDriver);
+    }
+
+    if (EUbloxModel::NeoF9P == identity.model)
+        return new GnssUsbRtk(resolved, std::move(identity));
+    if (EUbloxModel::NeoM9N == identity.model)
+        return new GnssUsb(resolved, std::move(identity));
+
+    fprintf(
+        stderr,
+        "[GNSS] Unrecognised u-blox receiver at %s (sw '%s', hw '%s'), "
+        "FATAL\r\n",
+        resolved.c_str(),
+        identity.swVersion.c_str(),
+        identity.hwVersion.c_str()
+    );
+    std::terminate();
+}
+
 GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
 :   commDriver_(std::move(commDriver)),
     configRegistry_(nullptr),
@@ -388,7 +572,33 @@ bool validateConfig(const GnssConfig& config)
     if (!checkNavigationFilters(config.navigationFilters))
         return false;
 
-    if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
+    if constexpr (std::is_same_v<StartupStrategy, M9NUsbStartup> ||
+        std::is_same_v<StartupStrategy, F9PUsbStartup>)
+    {
+        if (config.timing.has_value())
+        {
+            fprintf(
+                stderr,
+                "[GnssConfig] Timing is not supported over USB - "
+                "use L1/L5 GNSS TIME HAT\r\n"
+            );
+            return false;
+        }
+
+        if (config.geofencing.has_value()
+            && config.geofencing->pioPinPolarity.has_value())
+        {
+            fprintf(
+                stderr,
+                "[GnssConfig] Geofence PIO pin is on the HAT header and is "
+                "not reachable over USB - pioPinPolarity must be nullopt\r\n"
+            );
+            return false;
+        }
+
+        return checkGeofencing(config.geofencing);
+    }
+    else if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||
         std::is_same_v<StartupStrategy, F9PStartup>)
     {
         if (config.timing.has_value())
@@ -446,7 +656,7 @@ bool GnssHat::start(const GnssConfig& config)
     startupStrategy_ = std::make_unique<StartupStrategy>(
         *commDriver_, *configRegistry_, *ubxParser_
     );
-    if constexpr (std::is_same_v<RunStrategy, F9PRun>)
+    if constexpr (RequiresRtcm3Store<RunStrategy>::value)
     {
         runStrategy_ = createRunStrategy<RunStrategy>(
             *commDriver_, *ubxParser_, txReadyNotifier_, navigationNotifier_,
@@ -484,7 +694,11 @@ bool GnssHat::start(const GnssConfig& config)
         gnss_.geofencingCfg(cfg);
     }
 
-    if constexpr (!std::is_same_v<RunStrategy, F10TRun>)
+    // Only the header-mounted variants have a TX-READY line; the UART and USB
+    // receivers are driven by epoll instead.
+    constexpr bool hasTxReadyPin = std::is_same_v<RunStrategy, M9NRun>
+        || std::is_same_v<RunStrategy, F9PRun>;
+    if constexpr (hasTxReadyPin)
     {
         txReady_ = std::make_unique<TxReadyInterrupt>(
             txReadyNotifier_, config.measurementRate_Hz

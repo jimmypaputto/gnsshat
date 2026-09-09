@@ -82,7 +82,7 @@ public:
 
     bool execute() override;
 
-private:
+protected:
     bool reconfigureCommPort() override;
 };
 
@@ -115,6 +115,40 @@ public:
 private:
     bool rtkBaseStartup();
     bool rtkRoverStartup();
+
+    bool base_{false};
+    bool rover_{false};
+};
+
+// Reuses the M9N register set-up but drives the USB port instead of SPI. There
+// is no TX-READY (CFG-TXREADY-INTERFACE only accepts I2C or SPI) and no
+// timepulse pin reaches the host, so both key groups are left alone.
+class M9NUsbStartup: public M9NStartup
+{
+public:
+    M9NUsbStartup(ICommDriver& commDriver,
+        IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser);
+    virtual ~M9NUsbStartup() = default;
+
+    bool execute() override;
+
+protected:
+    // CDC-ACM has no line speed and no clock phase to renegotiate.
+    bool reconfigureCommPort() override { return true; }
+    int pollRxData(uint8_t* rxBuff, uint32_t size, int timeoutMs) override;
+};
+
+class F9PUsbStartup: public M9NUsbStartup
+{
+public:
+    F9PUsbStartup(ICommDriver& commDriver,
+        IUbloxConfigRegistry& configRegistry, UbxParser& ubxParser);
+    virtual ~F9PUsbStartup() = default;
+
+    bool execute() override;
+
+private:
+    bool rtkBaseStartup();
 
     bool base_{false};
     bool rover_{false};

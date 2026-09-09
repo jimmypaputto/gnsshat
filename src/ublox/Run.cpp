@@ -6,6 +6,7 @@
 
 #include "SerialDriver.hpp"
 #include "UartDriver.hpp"
+#include "UbxRtcmDemux.hpp"
 
 #include <algorithm>
 
@@ -204,6 +205,131 @@ void F9PRun::executeUartBase()
 void F9PRun::executeUartRover(std::stop_token stoken)
 {
     auto& serialDriver = static_cast<SerialDriver&>(*uartDriver_);
+    const auto incomingFrames = rtcm3Store_.waitForFrames(stoken);
+    for (const auto& frame : incomingFrames)
+    {
+        serialDriver.transmit(frame);
+    }
+}
+
+UsbRun::UsbRun(ICommDriver& commDriver, UbxParser& ubxParser,
+    Notifier& navigationNotifier)
+:   RunBase(commDriver, ubxParser),
+    navigationNotifier_(navigationNotifier)
+{
+}
+
+bool UsbRun::readAndShouldParse()
+{
+    auto& serialDriver = static_cast<SerialDriver&>(commDriver_);
+    constexpr uint32_t parseThreshold = 100;
+    const int epollTimeoutMs = (runRxBuffOffset_ > 0) ? 10 : 500;
+
+    const auto incomingBytes = serialDriver.epoll(
+        runRxBuff_.data() + runRxBuffOffset_,
+        runRxBuffSize - runRxBuffOffset_,
+        epollTimeoutMs
+    );
+
+    if (incomingBytes > 0)
+        runRxBuffOffset_ += incomingBytes;
+
+    return (runRxBuffOffset_ >= parseThreshold) ||
+        (incomingBytes <= 0 && runRxBuffOffset_ > 0);
+}
+
+void UsbRun::execute(std::stop_token)
+{
+    if (!readAndShouldParse())
+        return;
+
+    const auto unfinishedFrame = ubxParser_.parse(
+        std::span<const uint8_t>(runRxBuff_.data(), runRxBuffOffset_)
+    );
+
+    std::copy(
+        unfinishedFrame.begin(), unfinishedFrame.end(), runRxBuff_.begin()
+    );
+    runRxBuffOffset_ = unfinishedFrame.size();
+
+    if (ubxParser_.consumeNavigationEpoch())
+        navigationNotifier_.notify();
+}
+
+F9PUsbRun::F9PUsbRun(ICommDriver& commDriver, UbxParser& ubxParser,
+    Notifier& navigationNotifier, Rtcm3Store& rtcm3Store,
+    const GnssConfig& config)
+:   UsbRun(commDriver, ubxParser, navigationNotifier),
+    rtcm3Parser_(rtcm3Store),
+    rtcm3Store_(rtcm3Store)
+{
+    if (!config.rtk.has_value())
+        return;
+
+    // Base corrections come in through the shared read loop, so only the rover
+    // needs a thread of its own to push frames back to the receiver.
+    if (config.rtk->mode == ERtkMode::Rover)
+    {
+        rover_ = std::jthread([this](std::stop_token stoken) {
+            while (!stoken.stop_requested())
+            {
+                executeRover(stoken);
+            }
+        });
+    }
+}
+
+F9PUsbRun::~F9PUsbRun()
+{
+    if (rover_.joinable())
+    {
+        rover_.request_stop();
+        rover_.join();
+    }
+}
+
+void F9PUsbRun::execute(std::stop_token)
+{
+    if (!readAndShouldParse())
+        return;
+
+    auto split = UbxRtcmDemux::split(
+        std::span<const uint8_t>(runRxBuff_.data(), runRxBuffOffset_)
+    );
+
+    if (!split.ubx.empty())
+    {
+        ubxParser_.parse(split.ubx);
+        if (ubxParser_.consumeNavigationEpoch())
+            navigationNotifier_.notify();
+    }
+
+    if (!split.rtcm3.empty())
+    {
+        rtcm3Parser_.parse(
+            std::span<uint8_t>(split.rtcm3.data(), split.rtcm3.size()),
+            rtcm3UnfinishedBuff_
+        );
+        rtcm3UnfinishedBuff_.clear();
+    }
+
+    // A corrupt length field can claim a frame longer than the buffer; drop it
+    // rather than wedge the loop waiting for bytes that will never come.
+    if (split.pending.size() >= runRxBuffSize)
+    {
+        runRxBuffOffset_ = 0;
+        return;
+    }
+
+    std::copy(
+        split.pending.begin(), split.pending.end(), runRxBuff_.begin()
+    );
+    runRxBuffOffset_ = split.pending.size();
+}
+
+void F9PUsbRun::executeRover(std::stop_token stoken)
+{
+    auto& serialDriver = static_cast<SerialDriver&>(commDriver_);
     const auto incomingFrames = rtcm3Store_.waitForFrames(stoken);
     for (const auto& frame : incomingFrames)
     {

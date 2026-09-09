@@ -92,6 +92,47 @@ private:
     std::vector<uint8_t> unfinishedFrameBuff_;
 };
 
+// USB receivers raise no TX-READY edge, so the loop is driven by epoll on the
+// CDC-ACM endpoint the same way the UART variant is.
+class UsbRun : public IRunStrategy, public RunBase
+{
+public:
+    UsbRun(ICommDriver& commDriver, UbxParser& ubxParser,
+        Notifier& navigationNotifier);
+    ~UsbRun() override = default;
+
+    void execute(std::stop_token stoken) override;
+
+protected:
+    // Fills runRxBuff_ from runRxBuffOffset_ on. Returns the epoll result and
+    // whether enough is buffered to be worth parsing.
+    bool readAndShouldParse();
+
+    Notifier& navigationNotifier_;
+};
+
+// Everything shares one endpoint here, so UBX and RTCM3 arrive interleaved and
+// rover corrections go back out on the very same descriptor.
+class F9PUsbRun : public UsbRun
+{
+public:
+    F9PUsbRun(ICommDriver& commDriver, UbxParser& ubxParser,
+        Notifier& navigationNotifier, Rtcm3Store& rtcm3Store,
+        const GnssConfig& config);
+
+    ~F9PUsbRun() override;
+
+    void execute(std::stop_token stoken) override;
+
+private:
+    void executeRover(std::stop_token stoken);
+
+    Rtcm3Parser rtcm3Parser_;
+    Rtcm3Store& rtcm3Store_;
+    std::jthread rover_;
+    std::vector<uint8_t> rtcm3UnfinishedBuff_;
+};
+
 }  // JimmyPaputto
 
 #endif // JIMMY_PAPUTTO_RUN_HPP_
