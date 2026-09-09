@@ -596,17 +596,6 @@ bool validateConfig(const GnssConfig& config)
             return false;
         }
 
-        if (config.geofencing.has_value()
-            && config.geofencing->pioPinPolarity.has_value())
-        {
-            fprintf(
-                stderr,
-                "[GnssConfig] Geofence PIO pin is on the HAT header and is "
-                "not reachable over USB - pioPinPolarity must be nullopt\r\n"
-            );
-            return false;
-        }
-
         return checkGeofencing(config.geofencing);
     }
     else if constexpr (std::is_same_v<StartupStrategy, M9NStartup> ||

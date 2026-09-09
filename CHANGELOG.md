@@ -17,8 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Timepulse, time mark and the hardware reset line need GPIO the USB link does
   not carry: those calls report unsupported, and
   `hardResetUbloxSom_ColdStart()` falls back to a GNSS-only `UBX-CFG-RST`
-  cold start. Geofencing works but its PIO alarm pin does not, so
-  `pioPinPolarity` must be `nullopt`
+  cold start. Geofencing is unaffected, PIO alarm pin included: that pin drives
+  a relay on the board rather than a Pi GPIO
 - `gnsshat-probe --usb` lists attached u-blox receivers with their device node,
   stable by-path alias, detected model and firmware versions
 - `print-navigation-usb` example in both C and C++

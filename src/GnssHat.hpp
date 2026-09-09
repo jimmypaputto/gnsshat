@@ -67,18 +67,12 @@ public:
     virtual ~IGnssHat() = default;
 };
 
-// A u-blox receiver reached over USB CDC-ACM instead of the HAT header. The
-// link carries no GPIO, so the inherited timepulse, time mark and hardware
-// reset calls report failure rather than acting; hardResetUbloxSom_ColdStart
-// falls back to a UBX cold start.
 class IGnssUsb : public virtual IGnssHat
 {
 public:
     virtual std::string devicePath() const = 0;
     virtual EUbloxModel model() const = 0;
 
-    // A null devicePath selects the only attached u-blox receiver. Terminates
-    // when none is found, or when several are and no path was given.
     static IGnssUsb* create(const char* devicePath = nullptr);
 
     ~IGnssUsb() override = default;
