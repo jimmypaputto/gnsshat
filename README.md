@@ -458,6 +458,7 @@ journalctl -u gnsshat-rtk-base -f
 | `examples/cpp/timepulse-interrupt` | C++ | Timepulse synchronization |
 | `examples/cpp/hot-start` | C++ | Cold vs hot start timing benchmark |
 | `examples/cpp/rtk` | C++ | RTK base station and rover |
+| `examples/cpp/rtk` (`rtk-base-usb`) | C++ | RTK base over USB, dumps the RTCM3 it produces |
 | `examples/cpp/time-base` | C++ | Time base mode for improved time accuracy |
 | `examples/cpp/time-mark` | C++ | EXTINT time mark event timestamping |
 | `examples/c/` | C | Same set of examples using the C API |

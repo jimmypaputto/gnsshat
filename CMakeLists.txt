@@ -246,6 +246,7 @@ if(BUILD_EXAMPLES)
         PrintSatellitesBasic
         PrintSatellitesAdvanced
         RtkBase
+        RtkBaseUsb
         RtkRover
         TimeBase
         TimeMark
@@ -263,6 +264,7 @@ if(BUILD_EXAMPLES)
         print-satellites-basic
         print-satellites-advanced
         rtk-base
+        rtk-base-usb
         rtk-rover
         time-base
         time-mark
