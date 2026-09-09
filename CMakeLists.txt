@@ -213,6 +213,7 @@ if(BUILD_EXAMPLES)
     add_subdirectory(examples/c/hot-start)
     add_subdirectory(examples/c/jamming-detector)
     add_subdirectory(examples/c/print-navigation)
+    add_subdirectory(examples/c/print-navigation-usb)
     add_subdirectory(examples/c/print-satellites)
     add_subdirectory(examples/c/rtk)
     add_subdirectory(examples/c/time-base)
@@ -224,6 +225,7 @@ if(BUILD_EXAMPLES)
     add_subdirectory(examples/cpp/hot-start)
     add_subdirectory(examples/cpp/jamming-detector)
     add_subdirectory(examples/cpp/print-navigation)
+    add_subdirectory(examples/cpp/print-navigation-usb)
     add_subdirectory(examples/cpp/print-satellites)
     add_subdirectory(examples/cpp/rtk)
     add_subdirectory(examples/cpp/time-base)
@@ -240,6 +242,7 @@ if(BUILD_EXAMPLES)
         JammingDetector
         PrintNavigationAdvanced
         PrintNavigationBasic
+        PrintNavigationUsb
         PrintSatellitesBasic
         PrintSatellitesAdvanced
         RtkBase
@@ -256,6 +259,7 @@ if(BUILD_EXAMPLES)
         jamming-detector
         print-navigation-advanced
         print-navigation-basic
+        print-navigation-usb
         print-satellites-basic
         print-satellites-advanced
         rtk-base

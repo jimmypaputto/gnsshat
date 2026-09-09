@@ -11,8 +11,68 @@
 #include "GnssHat.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
+#include "ublox/UbloxProbe.hpp"
 #include "ublox/UbxParser.hpp"
+#include "ublox/UsbDeviceScanner.hpp"
+#include "ublox/UsbDriver.hpp"
 #include "ublox/ubxmsg/UBX_MON_VER.hpp"
+
+static const char* modelName(const JimmyPaputto::EUbloxModel model)
+{
+    switch (model)
+    {
+        case JimmyPaputto::EUbloxModel::NeoM9N: return "NEO-M9N";
+        case JimmyPaputto::EUbloxModel::NeoF9P: return "NEO-F9P";
+        case JimmyPaputto::EUbloxModel::Unknown: break;
+    }
+    return "Unknown";
+}
+
+// Unlike IGnssUsb::create(), this lists every receiver instead of refusing to
+// choose - showing the paths is the whole point of the tool.
+static int probeUsbReceivers()
+{
+    const JimmyPaputto::UsbDeviceScanner scanner;
+    const auto devices = scanner.scan();
+
+    if (devices.empty())
+    {
+        printf("No u-blox USB receiver detected (USB vendor %s).\n",
+            JimmyPaputto::UsbDeviceScanner::ubloxVendorId);
+        return 1;
+    }
+
+    printf("Found %zu u-blox USB receiver(s):\n\n", devices.size());
+
+    for (const auto& device : devices)
+    {
+        printf("Device:      %s\n", device.devicePath.c_str());
+        printf("Product:     %s\n", device.product.c_str());
+        if (!device.byPathAlias.empty())
+            printf("Stable path: %s\n", device.byPathAlias.c_str());
+
+        JimmyPaputto::UsbDriver driver(device.devicePath);
+        if (!driver.isOpen())
+        {
+            printf("Model:       <cannot open device>\n\n");
+            continue;
+        }
+
+        const auto identity = JimmyPaputto::UbloxProbe::identify(driver);
+        printf("Model:       %s\n", modelName(identity.model));
+
+        if (!identity.swVersion.empty())
+        {
+            printf("Software:    %s\n", identity.swVersion.c_str());
+            printf("Hardware:    %s\n", identity.hwVersion.c_str());
+            for (const auto& extension : identity.extensions)
+                printf("  %s\n", extension.c_str());
+        }
+        printf("\n");
+    }
+
+    return 0;
+}
 
 static std::map<std::string, std::string> parseCustom0(const std::string& raw)
 {
@@ -79,11 +139,14 @@ static bool pollMonVer(JimmyPaputto::ICommDriver& driver)
 int main(int argc, char* argv[])
 {
     bool liveMode = false;
+    bool usbMode = false;
     std::string forceComm;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "--live") == 0)
             liveMode = true;
+        else if (std::strcmp(argv[i], "--usb") == 0)
+            usbMode = true;
         else if (std::strcmp(argv[i], "--spi") == 0)
             forceComm = "SPI";
         else if (std::strcmp(argv[i], "--uart") == 0)
@@ -91,13 +154,17 @@ int main(int argc, char* argv[])
         else if (std::strcmp(argv[i], "--help") == 0 ||
                  std::strcmp(argv[i], "-h") == 0)
         {
-            printf("Usage: gnsshat-probe [--live] [--spi|--uart]\n");
+            printf("Usage: gnsshat-probe [--live] [--spi|--uart] [--usb]\n");
             printf("  --live  Query the u-blox receiver for firmware version\n");
             printf("  --spi   Force SPI interface for --live mode\n");
             printf("  --uart  Force UART interface for --live mode\n");
+            printf("  --usb   List u-blox receivers attached over USB\n");
             return 0;
         }
     }
+
+    if (usbMode)
+        return probeUsbReceivers();
 
     const std::string product = JimmyPaputto::Hat::readEepromField("product");
     if (product.empty())
