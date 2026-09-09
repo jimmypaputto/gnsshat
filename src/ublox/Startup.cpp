@@ -1508,6 +1508,15 @@ bool M9NUsbStartup::execute()
         return false;
     }
 
+    // TP1 drives an LED on the board, so the pin config is worth sending even
+    // though the host cannot take an interrupt from it over USB.
+    result = configure(timepulsePinConfigKeys_);
+    if (!result)
+    {
+        fprintf(stderr, "[Startup] Timepulse configuration failed\r\n");
+        return false;
+    }
+
     constexpr std::array<uint32_t, 6> msgoutKeys = {
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_SPAN_USB,
         UbxCfgKeys::CFG_MSGOUT_UBX_MON_RF_USB,

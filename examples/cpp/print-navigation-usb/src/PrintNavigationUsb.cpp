@@ -28,10 +28,10 @@ JimmyPaputto::GnssConfig createDefaultConfig()
     return JimmyPaputto::GnssConfig {
         .measurementRate_Hz = 1,
         .dynamicModel = JimmyPaputto::EDynamicModel::Portable,
-        // Kept at defaults: the timepulse pin sits on the HAT header and is
-        // not reachable over USB.
+        // TP1 still drives the board LED over USB; only the host-side
+        // interrupt needs the HAT header.
         .timepulsePinConfig = JimmyPaputto::TimepulsePinConfig {
-            .active = false,
+            .active = true,
             .fixedPulse = JimmyPaputto::TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
             .polarity = JimmyPaputto::ETimepulsePinPolarity::RisingEdgeAtTopOfSecond

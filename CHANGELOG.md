@@ -14,11 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a NEO-M9N or an F9P by polling UBX-MON-VER; RTK works in both base and rover
   mode. `IGnssUsb` derives from `IGnssHat`, so every existing call, including
   the gpsd bridge and the whole `jp_gnss_hat_*` C surface, works unchanged.
-  Timepulse, time mark and the hardware reset line need GPIO the USB link does
-  not carry: those calls report unsupported, and
+  Time mark, the timepulse interrupt and the hardware reset line need GPIO the
+  USB link does not carry: those calls report unsupported, and
   `hardResetUbloxSom_ColdStart()` falls back to a GNSS-only `UBX-CFG-RST`
-  cold start. Geofencing is unaffected, PIO alarm pin included: that pin drives
-  a relay on the board rather than a Pi GPIO
+  cold start. The timepulse pin configuration is still applied, since TP1
+  drives an LED on the board. Geofencing is unaffected, PIO alarm pin included:
+  that pin drives a relay on the board rather than a Pi GPIO
 - `gnsshat-probe --usb` lists attached u-blox receivers with their device node,
   stable by-path alias, detected model and firmware versions
 - `print-navigation-usb` example in both C and C++

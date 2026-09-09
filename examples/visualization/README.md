@@ -55,9 +55,8 @@ python3 app.py usb
 python3 app.py usb --device /dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.0
 ```
 
-The model (NEO-M9N or F9P) is detected from UBX-MON-VER, and the RTK/NTRIP
-panels appear automatically on an F9P. The Timepulse section is greyed out:
-that pin is on the HAT header and drives nothing over USB.
+The model (NEO-M9N or F9P) is detected from UBX-MON-VER and shown next to the
+receiver name; the RTK/NTRIP panels appear automatically on an F9P.
 
 ### External TTY Mode
 

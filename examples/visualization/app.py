@@ -291,6 +291,12 @@ RTK_CAPABLE_NAMES = frozenset({
     'u-blox USB GNSS RTK receiver',
 })
 
+# NEO-M9N has no UBX-MON-SYS, whichever port it is attached to.
+NO_SYSTEM_HEALTH_NAMES = frozenset({
+    'L1 GNSS HAT',
+    'u-blox USB GNSS receiver',
+})
+
 
 def _uses_gnsshat_library():
     """native and usb differ only in how the receiver is opened."""
@@ -299,6 +305,10 @@ def _uses_gnsshat_library():
 
 def _has_rtk():
     return gps_state.get('hat_name') in RTK_CAPABLE_NAMES
+
+
+def _has_system_health():
+    return gps_state.get('hat_name') not in NO_SYSTEM_HEALTH_NAMES
 
 # Global state
 gps_state = {
@@ -316,6 +326,7 @@ gps_state = {
     'gsv_collector': {},  # {talker: {total_msgs, msgs: {num: msg}}} for multi-part GSV
     'current_config': None,  # Current GnssHat config dict
     'hat_name': None,  # HAT name string (native mode only)
+    'receiver_model': None,  # u-blox model from MON-VER (usb mode only)
     'config_lock': threading.Lock(),  # Lock for config changes
     'system_data': None,  # Last system_update payload (MON-SYS + MON-VER)
 }
@@ -1028,8 +1039,7 @@ def create_default_config():
         'measurement_rate_hz': 1,
         'dynamic_model': gnsshat.DynamicModel.STATIONARY,
         'timepulse_pin_config': {
-            # The pin sits on the HAT header, so it goes nowhere over USB.
-            'active': RUN_MODE != 'usb',
+            'active': True,
             'fixed_pulse': {
                 'frequency': 1,
                 'pulse_width': 0.1
@@ -1929,6 +1939,8 @@ def index():
                            mode=('native' if RUN_MODE == 'usb' else RUN_MODE),
                            transport=('usb' if RUN_MODE == 'usb' else 'hat'),
                            rtk_available=_has_rtk(),
+                           system_health_available=_has_system_health(),
+                           receiver_model=gps_state.get('receiver_model'),
                            hat_name=gps_state.get('hat_name'),
                            tls_available=tls_available,
                            ui_info=_build_ui_info())
@@ -2842,7 +2854,8 @@ def start_gps_native():
         gps_state['current_config'] = config
 
         if RUN_MODE == 'usb':
-            print(f"USB receiver: {hat.usb_model()} on {hat.usb_device_path()}")
+            gps_state['receiver_model'] = hat.usb_model()
+            print(f"USB receiver: {gps_state['receiver_model']} on {hat.usb_device_path()}")
 
         # Enable time mark trigger if configured
         timing = config.get('timing')

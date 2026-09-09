@@ -413,12 +413,14 @@ protected:
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 
+    // The TP1 pin is configured normally and still drives the board LED; what
+    // USB cannot deliver is the edge interrupt this API blocks on.
     static void reportNoTimepulsePin()
     {
         fprintf(
             stderr,
-            "[GNSS] Timepulse needs the HAT header GPIO and is not available "
-            "over USB\r\n"
+            "[GNSS] Timepulse interrupts need the HAT header GPIO and are not "
+            "available over USB; the TP1 pin config is still applied\r\n"
         );
     }
 

@@ -32,6 +32,9 @@
                     {% if hat_name %}
                     <span class="badge badge-hat">{{ hat_name }}</span>
                     {% endif %}
+                    {% if receiver_model %}
+                    <span class="badge badge-hat">{{ receiver_model }}</span>
+                    {% endif %}
                 </div>
             </div>
         </header>
@@ -229,7 +232,7 @@
                 <!-- System - UBX-MON-SYS health + UBX-MON-VER firmware -->
                 <div id="system-map" class="map-view" style="display: none;">
                     <div class="system-layout">
-                        {% if hat_name != 'L1 GNSS HAT' %}
+                        {% if system_health_available %}
                         <div class="system-card" id="system-health-card">
                             <h3>📈 Receiver Health <span class="system-card-sub" id="system-runtime">—</span></h3>
                             <div class="system-stats-grid">
@@ -745,7 +748,7 @@
                         </fieldset>
 
                         <!-- Timepulse -->
-                        <fieldset class="cfg-section" id="cfg-tp-section">
+                        <fieldset class="cfg-section">
                             <legend>⏱️ Timepulse Pin</legend>
                             <div class="cfg-row">
                                 <label for="cfg-tp-active">Active</label>
@@ -824,7 +827,7 @@
                         </fieldset>
                         {% endif %}
 
-                        {% if hat_name == 'L1/L5 GNSS RTK HAT' %}
+                        {% if rtk_available %}
                         <!-- RTK -->
                         <fieldset class="cfg-section">
                             <legend>📡 RTK</legend>
@@ -1325,6 +1328,7 @@
         window.APP_TRANSPORT = '{{ transport }}';
         window.RTK_AVAILABLE = {{ 'true' if rtk_available else 'false' }};
         window.HAT_NAME = '{{ hat_name or '' }}';
+        window.RECEIVER_MODEL = '{{ receiver_model or '' }}';
     </script>
     <script src="{{ url_for('static', filename='js/map.js') }}"></script>
     <script src="{{ url_for('static', filename='js/altitude.js') }}"></script>

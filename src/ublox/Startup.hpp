@@ -121,8 +121,9 @@ private:
 };
 
 // Reuses the M9N register set-up but drives the USB port instead of SPI. There
-// is no TX-READY (CFG-TXREADY-INTERFACE only accepts I2C or SPI) and no
-// timepulse pin reaches the host, so both key groups are left alone.
+// is no TX-READY (CFG-TXREADY-INTERFACE only accepts I2C or SPI), so that key
+// group is left alone. The timepulse pin config is still sent: TP1 drives an
+// LED on the board even though the host cannot take an interrupt from it.
 class M9NUsbStartup: public M9NStartup
 {
 public:

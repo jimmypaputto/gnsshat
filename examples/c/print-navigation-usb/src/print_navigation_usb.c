@@ -40,8 +40,9 @@ int main(int argc, char** argv)
     jp_gnss_gnss_config_init(&config);
     config.measurement_rate_hz = 1;
     config.dynamic_model = JP_GNSS_DYNAMIC_MODEL_PORTABLE;
-    /* The timepulse pin is on the HAT header and unreachable over USB. */
-    config.timepulse_pin_config.active = false;
+    /* TP1 still drives the board LED over USB; only the host-side interrupt
+     * needs the HAT header. */
+    config.timepulse_pin_config.active = true;
 
     jp_gnss_hat_soft_reset_hot_start(receiver);
     if (!jp_gnss_hat_start(receiver, &config))

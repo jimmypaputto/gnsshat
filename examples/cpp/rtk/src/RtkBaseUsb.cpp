@@ -50,9 +50,10 @@ static GnssConfig createSurveyInConfig()
     return GnssConfig {
         .measurementRate_Hz = 1,
         .dynamicModel = EDynamicModel::Stationary,
-        // The timepulse pin is on the HAT header and unreachable over USB.
+        // TP1 still drives the board LED over USB; only the host-side
+        // interrupt needs the HAT header.
         .timepulsePinConfig = TimepulsePinConfig {
-            .active = false,
+            .active = true,
             .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
             .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
