@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   stable by-path alias, detected model and firmware versions
 - `rtk-base-dump` example: RTK base survey-in that dumps the RTCM3 frames it
   produces, on the HAT or over USB
+- Visualization app: `native` mode reaches a USB receiver too. `--usb` forces
+  it when a HAT is on the header, `--device` names one when several are
+  attached; the separate `usb` mode is gone
 
 ### Changed
 - Receivers are located through sysfs (USB vendor `1546`) rather than

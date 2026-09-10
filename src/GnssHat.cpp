@@ -580,8 +580,9 @@ void warnAboutIdleUsb(const ReceiverSelection& selection,
     fprintf(
         stderr,
         "[GNSS] The L1 and RTK HATs expose the module's own USB port, so this "
-        "may be the same receiver. Pass CreateOptions{ .useUsb = true } to "
-        "open it over USB instead\r\n"
+        "may be the same receiver. To open it over USB ask for it explicitly: "
+        "CreateOptions{ .useUsb = true } in C++, jp_gnss_hat_create_usb() in C, "
+        "GnssHat(usb=True) in Python\r\n"
     );
 }
 

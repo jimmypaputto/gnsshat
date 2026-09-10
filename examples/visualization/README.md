@@ -9,12 +9,11 @@ A Flask + Socket.IO server streams navigation data to the browser — runs on Ra
 
 ## Operating Modes
 
-The application supports **four data source modes**:
+The application supports **three data source modes**:
 
 | Mode | Description | Requirements |
 |------|-------------|--------------|
-| `native` | Direct module communication via the GnssHat library (SPI) | Installed `jimmypaputto` (GnssHat) library |
-| `usb` | Same library, against a receiver on a host USB port (CDC-ACM) | Installed `jimmypaputto` library, u-blox receiver on USB |
+| `native` | Direct module communication via the GnssHat library (SPI/UART on the HAT header, or USB) | Installed `jimmypaputto` (GnssHat) library |
 | `external_tty` | NMEA sentence reading from a serial port (`/dev/jimmypaputto/gnss`) | `pyserial`, `pynmea2`, connected UART port |
 | `ros2` | ROS 2 topic subscription to `/gnss/navigation` | ROS 2 environment, `jp_gnss_hat` package |
 
@@ -33,7 +32,10 @@ pip install -r requirements.txt
 
 ### Native Mode (default)
 
-Direct communication with the GNSS module through the GnssHat library. Requires root privileges (SPI).
+Direct communication with the GNSS module through the GnssHat library. The
+library picks the transport itself: the HAT on the header, or a u-blox receiver
+on a host USB port when no HAT is seated. Root privileges are needed for the
+HAT (SPI); a USB receiver only needs your user in the `dialout` group.
 
 ```bash
 python3 app.py
@@ -41,24 +43,21 @@ python3 app.py
 python3 app.py native
 ```
 
-### USB Mode
+#### Forcing USB
 
-Same library and the same UI as native mode, but the receiver is reached over a
-host USB port instead of the HAT header. Native mode already falls back to USB
-when no HAT is seated; this mode is what you want when a HAT is on the header
-and the USB receiver is the one you mean. No root privileges needed as long as
-your user is in the `dialout` group.
+With a HAT on the header the HAT wins, and a receiver left on USB is only
+reported as a warning. `--usb` says you mean the USB one:
 
 ```bash
-python3 app.py usb
+python3 app.py native --usb
 
 # Name the device when more than one u-blox receiver is attached; the library
 # refuses to guess. Prefer the by-path alias, it survives reboots.
-python3 app.py usb --device /dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.0
+python3 app.py native --device /dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.0
 ```
 
-The model (NEO-M9N or F9P) is detected from UBX-MON-VER and shown next to the
-receiver name; the RTK/NTRIP panels appear automatically on an F9P.
+`--device` implies `--usb`. The model (NEO-M9N, F9P or F10T) is shown next to
+the receiver name; the RTK/NTRIP panels appear automatically on an F9P.
 
 ### External TTY Mode
 
