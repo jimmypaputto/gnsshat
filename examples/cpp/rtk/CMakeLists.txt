@@ -12,7 +12,7 @@ target_link_libraries(RtkBase gnsshat)
 
 add_executable(RtkBaseUsb src/RtkBaseUsb.cpp)
 set_target_properties(RtkBaseUsb PROPERTIES OUTPUT_NAME rtk-base-usb)
-target_link_libraries(RtkBaseUsb GnssHat)
+target_link_libraries(RtkBaseUsb gnsshat)
 
 add_executable(RtkRover src/RtkRover.cpp)
 set_target_properties(RtkRover PROPERTIES OUTPUT_NAME rtk-rover)

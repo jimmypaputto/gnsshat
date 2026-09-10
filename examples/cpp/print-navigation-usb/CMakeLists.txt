@@ -8,4 +8,4 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(PrintNavigationUsb src/PrintNavigationUsb.cpp)
 set_target_properties(PrintNavigationUsb PROPERTIES OUTPUT_NAME print-navigation-usb)
-target_link_libraries(PrintNavigationUsb GnssHat)
+target_link_libraries(PrintNavigationUsb gnsshat)
