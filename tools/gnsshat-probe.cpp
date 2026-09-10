@@ -17,19 +17,8 @@
 #include "ublox/UsbDriver.hpp"
 #include "ublox/ubxmsg/UBX_MON_VER.hpp"
 
-static const char* modelName(const JimmyPaputto::EUbloxModel model)
-{
-    switch (model)
-    {
-        case JimmyPaputto::EUbloxModel::NeoM9N: return "NEO-M9N";
-        case JimmyPaputto::EUbloxModel::NeoF9P: return "NEO-F9P";
-        case JimmyPaputto::EUbloxModel::Unknown: break;
-    }
-    return "Unknown";
-}
-
-// Unlike IGnssUsb::create(), this lists every receiver instead of refusing to
-// choose - showing the paths is the whole point of the tool.
+// Unlike IGnssHat::create(), this lists every receiver instead of picking one -
+// showing the paths is the whole point of the tool.
 static int probeUsbReceivers()
 {
     const JimmyPaputto::UsbDeviceScanner scanner;
@@ -59,7 +48,8 @@ static int probeUsbReceivers()
         }
 
         const auto identity = JimmyPaputto::UbloxProbe::identify(driver);
-        printf("Model:       %s\n", modelName(identity.model));
+        printf("Model:       %s\n",
+            JimmyPaputto::Utils::ubloxModel2string(identity.model).c_str());
 
         if (!identity.swVersion.empty())
         {

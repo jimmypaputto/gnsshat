@@ -33,7 +33,7 @@ public:
     int epoll(uint8_t* rxBuff, const uint32_t size, int timeoutMs = -1);
 
     bool isOpen() const { return fd_ >= 0; }
-    const std::string& devicePath() const { return devicePath_; }
+    const std::string& devicePath() const override { return devicePath_; }
     uint32_t currentBaudrate() const { return baudrate_; }
 
 protected:

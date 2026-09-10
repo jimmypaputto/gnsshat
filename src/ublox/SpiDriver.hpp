@@ -6,6 +6,7 @@
 #define SPI_DRIVER_HPP_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "ublox/ESpiMode.hpp"
@@ -26,6 +27,7 @@ public:
     void transmitReceive(std::span<const uint8_t> txBuff,
         std::vector<uint8_t>& rxBuff) override;
     void getRxBuff(uint8_t* rxBuff, const uint32_t size) override;
+    const std::string& devicePath() const override { return devicePath_; }
 
     void reinit(const ESpiMode spiMode);
     ESpiMode currentSpiMode() const { return currentSpiMode_; }
@@ -41,6 +43,7 @@ private:
 
     int spiFd_;
     const char* spiDevice_;
+    const std::string devicePath_{UBX_SPI_DEV};
     uint8_t txBank_[4096];
     static constexpr uint32_t spiSpeed_ = 5'000'000; // 5'000'000 = 5MHz
     static constexpr uint8_t spiBitsPerWord_ = 8;

@@ -73,21 +73,22 @@ static GnssConfig createSurveyInConfig()
     };
 }
 
-auto main(int argc, char** argv) -> int
+auto main() -> int
 {
-    // Without an argument the library picks the only attached receiver and
-    // aborts if there is more than one.
-    const char* devicePath = (argc > 1) ? argv[1] : nullptr;
-
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
 
-    auto* receiver = IGnssUsb::create(devicePath);
-    printf("Opened receiver on %s\r\n", receiver->devicePath().c_str());
+    // The library picks the transport itself: the HAT on the header, or a
+    // receiver on USB when there is none.
+    auto* receiver = IGnssHat::create();
+    printf("Opened %s (%s) on %s\r\n",
+        std::string(receiver->name()).c_str(),
+        Utils::ubloxModel2string(receiver->model()).c_str(),
+        receiver->devicePath().c_str());
 
-    if (receiver->model() != EUbloxModel::NeoF9P)
+    if (!receiver->rtk())
     {
-        printf("RTK base mode requires an F9P\r\n");
+        printf("RTK base mode needs an F9P\r\n");
         return -1;
     }
 

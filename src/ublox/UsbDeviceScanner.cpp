@@ -5,8 +5,6 @@
 #include "ublox/UsbDeviceScanner.hpp"
 
 #include <algorithm>
-#include <cstdio>
-#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -121,53 +119,6 @@ std::vector<UsbGnssDevice> UsbDeviceScanner::scan() const
 
     std::ranges::sort(devices, {}, &UsbGnssDevice::devicePath);
     return devices;
-}
-
-std::string UsbDeviceScanner::resolveSingle(
-    const char* explicitDevicePath) const
-{
-    if (explicitDevicePath != nullptr && explicitDevicePath[0] != '\0')
-        return explicitDevicePath;
-
-    const auto devices = scan();
-
-    if (devices.empty())
-    {
-        fprintf(
-            stderr,
-            "[GNSS] No u-blox USB receiver found (USB vendor %s), FATAL\r\n",
-            ubloxVendorId
-        );
-        std::terminate();
-    }
-
-    if (devices.size() > 1)
-    {
-        fprintf(
-            stderr,
-            "[GNSS] Found %zu u-blox USB receivers, refusing to guess:\r\n",
-            devices.size()
-        );
-        for (const auto& device : devices)
-        {
-            fprintf(
-                stderr,
-                "[GNSS]   %s (%s)%s%s\r\n",
-                device.devicePath.c_str(),
-                device.product.c_str(),
-                device.byPathAlias.empty() ? "" : " stable alias: ",
-                device.byPathAlias.c_str()
-            );
-        }
-        fprintf(
-            stderr,
-            "[GNSS] Pass an explicit device path (prefer the stable alias), "
-            "FATAL\r\n"
-        );
-        std::terminate();
-    }
-
-    return devices.front().devicePath;
 }
 
 }  // JimmyPaputto

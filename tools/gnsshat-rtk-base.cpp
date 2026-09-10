@@ -473,9 +473,10 @@ int main(int argc, char* argv[])
     std::signal(SIGTERM, signalHandler);
 
     // ── HAT pre-flight check ────────────────────────────────────────
-    // IGnssHat::create() terminates on unknown HATs; we check first so
-    // we can exit cleanly with a specific code (78 = EX_CONFIG) that the
-    // unit file treats as "do not restart".
+    // This tool drives the RTK HAT on the header only, so it checks the
+    // EEPROM itself rather than letting IGnssHat::create() fall back to a
+    // receiver on USB. Exiting with a specific code (78 = EX_CONFIG) also
+    // tells the unit file not to restart.
     static constexpr const char* kRequiredHat = "L1/L5 GNSS RTK HAT";
     static constexpr int kExitConfig = 78;
 

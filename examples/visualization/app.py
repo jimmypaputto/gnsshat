@@ -326,7 +326,7 @@ gps_state = {
     'gsv_collector': {},  # {talker: {total_msgs, msgs: {num: msg}}} for multi-part GSV
     'current_config': None,  # Current GnssHat config dict
     'hat_name': None,  # HAT name string (native mode only)
-    'receiver_model': None,  # u-blox model from MON-VER (usb mode only)
+    'receiver_model': None,  # u-blox module behind the handle
     'config_lock': threading.Lock(),  # Lock for config changes
     'system_data': None,  # Last system_update payload (MON-SYS + MON-VER)
 }
@@ -2853,9 +2853,8 @@ def start_gps_native():
         gps_state['hat_name'] = hat_name
         gps_state['current_config'] = config
 
-        if RUN_MODE == 'usb':
-            gps_state['receiver_model'] = hat.usb_model()
-            print(f"USB receiver: {gps_state['receiver_model']} on {hat.usb_device_path()}")
+        gps_state['receiver_model'] = hat.model()
+        print(f"Receiver: {gps_state['receiver_model']} on {hat.device_path()}")
 
         # Enable time mark trigger if configured
         timing = config.get('timing')

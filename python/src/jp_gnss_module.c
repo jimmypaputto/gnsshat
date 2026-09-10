@@ -1754,6 +1754,8 @@ static int GnssHat_init(GnssHat* self, PyObject* args, PyObject* kwds)
     if (device_path)
         usb = 1;
 
+    /* Without usb=True the HAT header wins; the plain factory falls back to a
+     * USB receiver only when no HAT is seated. */
     self->hat = usb
         ? jp_gnss_hat_create_usb(device_path)
         : jp_gnss_hat_create();
@@ -3613,11 +3615,11 @@ static PyObject* GnssHat_exit(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-static PyObject* GnssHat_usb_device_path(GnssHat* self,
+static PyObject* GnssHat_device_path(GnssHat* self,
     PyObject* Py_UNUSED(ignored))
 {
     const char* path = self->hat
-        ? jp_gnss_hat_usb_device_path(self->hat)
+        ? jp_gnss_hat_device_path(self->hat)
         : NULL;
 
     if (!path)
@@ -3626,11 +3628,11 @@ static PyObject* GnssHat_usb_device_path(GnssHat* self,
     return PyUnicode_FromString(path);
 }
 
-static PyObject* GnssHat_usb_model(GnssHat* self,
+static PyObject* GnssHat_model(GnssHat* self,
     PyObject* Py_UNUSED(ignored))
 {
     const jp_gnss_ublox_model_t model = self->hat
-        ? jp_gnss_hat_usb_model(self->hat)
+        ? jp_gnss_hat_model(self->hat)
         : JP_GNSS_UBLOX_MODEL_UNKNOWN;
 
     return PyUnicode_FromString(jp_gnss_ublox_model_to_string(model));
@@ -3638,16 +3640,18 @@ static PyObject* GnssHat_usb_model(GnssHat* self,
 
 static PyMethodDef GnssHat_methods[] = {
     {
-        "usb_device_path",
-        (PyCFunction)GnssHat_usb_device_path,
+        "device_path",
+        (PyCFunction)GnssHat_device_path,
         METH_NOARGS,
-        "Device node of the USB receiver, or None when this handle is a HAT"
+        "Node the receiver is reached through: '/dev/spidev0.0', "
+        "'/dev/ttyAMA0' or the '/dev/ttyACMx' of a USB receiver"
     },
     {
-        "usb_model",
-        (PyCFunction)GnssHat_usb_model,
+        "model",
+        (PyCFunction)GnssHat_model,
         METH_NOARGS,
-        "u-blox model detected over USB: 'NEO-M9N', 'NEO-F9P' or 'Unknown'"
+        "u-blox module behind this handle: 'NEO-M9N', 'NEO-F9P', 'NEO-F10T' "
+        "or 'Unknown'"
     },
     {
         "start",

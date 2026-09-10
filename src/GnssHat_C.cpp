@@ -642,7 +642,10 @@ jp_gnss_hat_t* jp_gnss_hat_create_usb(const char* device_path)
     try
     {
         auto* wrapper = new jp_gnss_hat;
-        wrapper->instance = IGnssUsb::create(device_path);
+        wrapper->instance = IGnssHat::create(IGnssHat::CreateOptions {
+            .useUsb = true,
+            .usbDevicePath = device_path ? device_path : ""
+        });
         return wrapper;
     }
     catch (...)
@@ -651,33 +654,26 @@ jp_gnss_hat_t* jp_gnss_hat_create_usb(const char* device_path)
     }
 }
 
-const char* jp_gnss_hat_usb_device_path(jp_gnss_hat_t* hat)
+const char* jp_gnss_hat_device_path(jp_gnss_hat_t* hat)
 {
     if (!hat || !hat->instance)
-        return nullptr;
-
-    auto* usb = dynamic_cast<IGnssUsb*>(hat->instance);
-    if (!usb)
         return nullptr;
 
     thread_local std::string path;
-    path = usb->devicePath();
+    path = hat->instance->devicePath();
     return path.c_str();
 }
 
-jp_gnss_ublox_model_t jp_gnss_hat_usb_model(jp_gnss_hat_t* hat)
+jp_gnss_ublox_model_t jp_gnss_hat_model(jp_gnss_hat_t* hat)
 {
     if (!hat || !hat->instance)
         return JP_GNSS_UBLOX_MODEL_UNKNOWN;
 
-    auto* usb = dynamic_cast<IGnssUsb*>(hat->instance);
-    if (!usb)
-        return JP_GNSS_UBLOX_MODEL_UNKNOWN;
-
-    switch (usb->model())
+    switch (hat->instance->model())
     {
         case EUbloxModel::NeoM9N: return JP_GNSS_UBLOX_MODEL_NEO_M9N;
         case EUbloxModel::NeoF9P: return JP_GNSS_UBLOX_MODEL_NEO_F9P;
+        case EUbloxModel::NeoF10T: return JP_GNSS_UBLOX_MODEL_NEO_F10T;
         case EUbloxModel::Unknown: break;
     }
     return JP_GNSS_UBLOX_MODEL_UNKNOWN;
@@ -689,6 +685,7 @@ const char* jp_gnss_ublox_model_to_string(jp_gnss_ublox_model_t model)
     {
         case JP_GNSS_UBLOX_MODEL_NEO_M9N: return "NEO-M9N";
         case JP_GNSS_UBLOX_MODEL_NEO_F9P: return "NEO-F9P";
+        case JP_GNSS_UBLOX_MODEL_NEO_F10T: return "NEO-F10T";
         case JP_GNSS_UBLOX_MODEL_UNKNOWN: break;
     }
     return "Unknown";

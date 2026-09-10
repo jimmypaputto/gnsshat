@@ -103,12 +103,19 @@ config = {
 
 ## GnssHat Methods
 
+`GnssHat()` opens the HAT seated on the header, or a u-blox receiver on a host
+USB port when there is no HAT. `GnssHat(usb=True)` forces the USB receiver even
+with a HAT present, and `GnssHat(device_path='/dev/serial/by-path/...')` names
+one when several are attached.
+
 | Method | Description |
 |--------|-------------|
 | `start(config)` | Configure and start the GNSS module. Returns `True` on success. |
 | `get_navigation()` | Get current navigation data (non-blocking). |
 | `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. |
 | `name()` | Get detected HAT name (e.g. `'L1/L5 GNSS TIME HAT'`). |
+| `model()` | u-blox module behind the handle: `'NEO-M9N'`, `'NEO-F9P'`, `'NEO-F10T'` or `'Unknown'`. |
+| `device_path()` | Node the receiver is reached through (e.g. `'/dev/spidev0.0'`, `'/dev/ttyACM0'`). |
 | `soft_reset_hot_start()` | Software reset — preserves almanac/ephemeris for fast TTFF. |
 | `hard_reset_cold_start()` | Hardware reset — full cold start. |
 | `enable_timepulse()` | Enable 1PPS output on GPIO 5. |

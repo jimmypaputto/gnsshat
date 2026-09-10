@@ -44,6 +44,20 @@ TEST(UbloxProbe, ModIdentifiesM9N)
         EUbloxModel::NeoM9N);
 }
 
+TEST(UbloxProbe, ModIdentifiesF10T)
+{
+    const std::vector<std::string> extensions = {
+        "ROM BASE 0x118B2060",
+        "FWVER=TIM 2.20",
+        "PROTVER=50.20",
+        "MOD=NEO-F10T",
+        "GPS;GLO;GAL;BDS"
+    };
+
+    EXPECT_EQ(UbloxProbe::modelFromMonVer(coreSwVersion, extensions),
+        EUbloxModel::NeoF10T);
+}
+
 TEST(UbloxProbe, FirmwareFamilyIdentifiesF9PWhenModIsAbsent)
 {
     const std::vector<std::string> extensions = {
@@ -68,6 +82,18 @@ TEST(UbloxProbe, FirmwareFamilyIdentifiesM9NWhenModIsAbsent)
         EUbloxModel::NeoM9N);
 }
 
+TEST(UbloxProbe, FirmwareFamilyIdentifiesF10TWhenModIsAbsent)
+{
+    const std::vector<std::string> extensions = {
+        "ROM BASE 0x118B2060",
+        "FWVER=TIM 2.20",
+        "PROTVER=50.20"
+    };
+
+    EXPECT_EQ(UbloxProbe::modelFromMonVer(coreSwVersion, extensions),
+        EUbloxModel::NeoF10T);
+}
+
 // MOD= is authoritative: an F9P running standard precision firmware is still
 // an F9P.
 TEST(UbloxProbe, ModWinsOverFirmwareFamily)
@@ -85,8 +111,8 @@ TEST(UbloxProbe, UnrecognisedReceiverStaysUnknown)
 {
     const std::vector<std::string> extensions = {
         "ROM BASE 0x118B2060",
-        "FWVER=TIM 2.20",
-        "MOD=NEO-F10T"
+        "FWVER=ADR 4.21",
+        "MOD=ZED-F9R"
     };
 
     EXPECT_EQ(UbloxProbe::modelFromMonVer(coreSwVersion, extensions),

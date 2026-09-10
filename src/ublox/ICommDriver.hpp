@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <string>
 #include <vector>
 
 
@@ -22,6 +23,10 @@ public:
     virtual void transmitReceive(std::span<const uint8_t> txBuff,
         std::vector<uint8_t>& rxBuff) = 0;
     virtual void getRxBuff(uint8_t* rxBuff, const uint32_t size) = 0;
+
+    // Node the receiver is reached through: /dev/spidev0.0, /dev/ttyAMA0 or
+    // the /dev/ttyACMx of a USB receiver.
+    virtual const std::string& devicePath() const = 0;
 };
 
 }  // JimmyPaputto

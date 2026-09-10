@@ -28,9 +28,26 @@ namespace JimmyPaputto
 class IGnssHat
 {
 public:
+    // Picks which receiver create() opens. The default means: the HAT on the
+    // header, falling back to USB only when there is no HAT.
+    struct CreateOptions
+    {
+        // Open a USB receiver even when a HAT is seated on the header.
+        bool useUsb = false;
+
+        // Empty selects the sole attached USB receiver; a non-empty path is an
+        // explicit order and implies useUsb.
+        std::string usbDevicePath{};
+    };
+
     virtual bool start(const GnssConfig& config) = 0;
 
     virtual std::string_view name() const = 0;
+
+    // u-blox module behind this handle, and the node it is reached through
+    // (/dev/spidev0.0, /dev/ttyAMA0 or the /dev/ttyACMx of a USB receiver).
+    virtual EUbloxModel model() const = 0;
+    virtual std::string devicePath() const = 0;
 
     virtual Navigation navigation() const = 0;
     virtual Navigation waitAndGetFreshNavigation() = 0;
@@ -62,20 +79,12 @@ public:
     virtual void triggerTimeMark(
         ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
 
+    // Two overloads rather than a defaulted argument: a nested type's member
+    // initializers cannot be used before the enclosing class is complete.
     static IGnssHat* create();
+    static IGnssHat* create(const CreateOptions& options);
 
     virtual ~IGnssHat() = default;
-};
-
-class IGnssUsb : public virtual IGnssHat
-{
-public:
-    virtual std::string devicePath() const = 0;
-    virtual EUbloxModel model() const = 0;
-
-    static IGnssUsb* create(const char* devicePath = nullptr);
-
-    ~IGnssUsb() override = default;
 };
 
 namespace Hat
@@ -107,6 +116,7 @@ std::string svQuality2string(const ESvQuality e);
 std::string timeMarkMode2string(const ETimeMarkMode e);
 std::string timeMarkRun2string(const ETimeMarkRun e);
 std::string timeMarkTimeBase2string(const ETimeMarkTimeBase e);
+std::string ubloxModel2string(const EUbloxModel e);
 
 std::string utcTimeFromGnss_ISO8601(const PositionVelocityTime& pvt);
 

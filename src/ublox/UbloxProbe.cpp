@@ -54,6 +54,9 @@ EUbloxModel modelFromProtocolFamily(const std::string& text)
 {
     if (text.find("HPG") != std::string::npos)
         return EUbloxModel::NeoF9P;
+    // Timing firmware ships on the F10T only, out of the modules we support.
+    if (text.find("TIM") != std::string::npos)
+        return EUbloxModel::NeoF10T;
     if (text.find("SPG") != std::string::npos)
         return EUbloxModel::NeoM9N;
     return EUbloxModel::Unknown;
@@ -70,6 +73,8 @@ EUbloxModel UbloxProbe::modelFromMonVer(const std::string& swVersion,
             continue;
         if (extension.find("F9P") != std::string::npos)
             return EUbloxModel::NeoF9P;
+        if (extension.find("F10T") != std::string::npos)
+            return EUbloxModel::NeoF10T;
         if (extension.find("M9N") != std::string::npos)
             return EUbloxModel::NeoM9N;
     }

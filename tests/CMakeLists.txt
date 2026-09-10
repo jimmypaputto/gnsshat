@@ -17,6 +17,7 @@ add_executable(GnssHatTests
     TestRtcm3.cpp
     TestUbxClassMsgId.cpp
     TestNtrip.cpp
+    TestReceiverResolver.cpp
     TestUbxRtcmDemux.cpp
     TestUbloxProbe.cpp
     TestUsbDeviceScanner.cpp

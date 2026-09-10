@@ -15,7 +15,8 @@ enum class EUbloxModel : uint8_t
 {
     Unknown = 0,
     NeoM9N,
-    NeoF9P
+    NeoF9P,
+    NeoF10T
 };
 
 }  // JimmyPaputto

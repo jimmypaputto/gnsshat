@@ -44,7 +44,9 @@ python3 app.py native
 ### USB Mode
 
 Same library and the same UI as native mode, but the receiver is reached over a
-host USB port instead of the HAT header. No root privileges needed as long as
+host USB port instead of the HAT header. Native mode already falls back to USB
+when no HAT is seated; this mode is what you want when a HAT is on the header
+and the USB receiver is the one you mean. No root privileges needed as long as
 your user is in the `dialout` group.
 
 ```bash

@@ -9,27 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - USB support for u-blox receivers connected to a host USB port instead of the
-  HAT header. `IGnssUsb::create()` (C: `jp_gnss_hat_create_usb()`, Python:
-  `GnssHat(usb=True)`) opens a CDC-ACM receiver and auto-detects whether it is
-  a NEO-M9N or an F9P by polling UBX-MON-VER; RTK works in both base and rover
-  mode. `IGnssUsb` derives from `IGnssHat`, so every existing call, including
-  the gpsd bridge and the whole `jp_gnss_hat_*` C surface, works unchanged.
+  HAT header. `IGnssHat::create()` resolves the transport by itself: the HAT on
+  the header wins, and a receiver on USB is opened when no HAT is seated. The
+  new `IGnssHat::CreateOptions` (C: `jp_gnss_hat_create_usb()`, Python:
+  `GnssHat(usb=True)`) forces USB even with a HAT present, optionally naming a
+  device node. The model is detected by polling UBX-MON-VER, so a NEO-M9N and
+  an F9P both work and RTK runs in base and rover mode. USB receivers are
+  ordinary `IGnssHat` instances, so every existing call, including the gpsd
+  bridge and the whole `jp_gnss_hat_*` C surface, works unchanged.
   Time mark, the timepulse interrupt and the hardware reset line need GPIO the
   USB link does not carry: those calls report unsupported, and
   `hardResetUbloxSom_ColdStart()` falls back to a GNSS-only `UBX-CFG-RST`
   cold start. The timepulse pin configuration is still applied, since TP1
   drives an LED on the board. Geofencing is unaffected, PIO alarm pin included:
   that pin drives a relay on the board rather than a Pi GPIO
+- `IGnssHat::model()` and `IGnssHat::devicePath()` (C: `jp_gnss_hat_model()`,
+  `jp_gnss_hat_device_path()`, Python: `model()`, `device_path()`) report the
+  u-blox module and the node it is reached through, whatever the transport.
+  `EUbloxModel` gained `NeoF10T`, and `Utils::ubloxModel2string()` converts it
 - `gnsshat-probe --usb` lists attached u-blox receivers with their device node,
   stable by-path alias, detected model and firmware versions
-- `print-navigation-usb` example in both C and C++
+- `rtk-base-dump` example: RTK base survey-in that dumps the RTCM3 frames it
+  produces, on the HAT or over USB
 
 ### Changed
 - Receivers are located through sysfs (USB vendor `1546`) rather than
   `/dev/serial/by-id`. The modules report no iSerial, so two of them collide on
   a single by-id name and only one symlink survives. When several receivers are
-  present the library refuses to guess and aborts, naming each candidate and
-  its stable `/dev/serial/by-path` alias to pass explicitly
+  present and no HAT takes precedence, the library refuses to guess and aborts,
+  naming each candidate and its stable `/dev/serial/by-path` alias to pass
+  explicitly. A receiver left idle on USB while a HAT is opened is reported as
+  a warning: the L1 and RTK HATs expose the module's own USB port, so the two
+  may well be the same receiver
 - `UartDriver` now shares its tty handling with the USB transport through a new
   `SerialDriver` base; the UART behaviour is unchanged
 

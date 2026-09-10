@@ -34,11 +34,26 @@ The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 
 ### USB-attached receivers
 
-A NEO-M9N or F9P plugged into a host USB port instead of the HAT header is
-supported through `IGnssUsb`, which derives from `IGnssHat` -- navigation, RTK,
-geofencing, the gpsd bridge and the whole C and Python surface behave the same.
-There is no HAT EEPROM to read, so the model is detected by polling
+A NEO-M9N or F9P plugged into a host USB port instead of the HAT header needs
+no separate API: `IGnssHat::create()` picks the transport itself -- navigation,
+RTK, geofencing, the gpsd bridge and the whole C and Python surface behave the
+same. There is no HAT EEPROM to read, so the model is detected by polling
 UBX-MON-VER.
+
+| Situation | What `create()` opens |
+|-----------|-----------------------|
+| HAT on the header | The HAT. A receiver on USB is reported as a warning and left alone |
+| No HAT, one receiver on USB | That receiver |
+| No HAT, several receivers on USB | Nothing -- aborts and lists the candidates |
+| `CreateOptions{ .useUsb = true }` | USB even with a HAT seated; aborts when no receiver is attached |
+| `CreateOptions{ .usbDevicePath = "..." }` | Exactly that node |
+
+```cpp
+auto* receiver = IGnssHat::create();                          // HAT, or USB when there is none
+auto* usb      = IGnssHat::create({ .useUsb = true });        // the sole USB receiver
+auto* pinned   = IGnssHat::create({ .usbDevicePath =
+    "/dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.0" }); // a named one
+```
 
 | Feature | Over USB | Why |
 |---------|----------|-----|
@@ -50,15 +65,15 @@ UBX-MON-VER.
 | Time mark / EXTINT trigger | No | GPIO 17 is on the HAT header |
 | Hardware cold start | Emulated | No reset line; issues a GNSS-only `UBX-CFG-RST` instead |
 
+The NEO-F10T is recognised over USB but not supported: its timing features need
+the L1/L5 GNSS TIME HAT.
+
 ```bash
 # List attached receivers and their stable paths
 sudo gnsshat-probe --usb
 
-# Run against the only attached receiver
-sudo ./examples/bin/print-navigation-usb
-
-# Or name one explicitly when several are plugged in
-sudo ./examples/bin/print-navigation-usb /dev/serial/by-path/platform-xhci-hcd.1-usb-0:1:1.0
+# Any example works against USB when no HAT is seated
+sudo ./examples/bin/print-navigation-basic
 ```
 
 Receivers are found through sysfs by USB vendor ID `1546`. `/dev/serial/by-id`
@@ -66,7 +81,11 @@ is not used: the modules report no serial number, so two of them would collide
 on one by-id name. When several are attached the library aborts rather than
 pick one, and prints each candidate with its `/dev/serial/by-path` alias --
 that alias is stable across reboots as long as the cable stays in the same
-port, so it is the right thing to pin in a config file.
+port, so it is the right thing to pin in `usbDevicePath`.
+
+The L1 and RTK HATs expose the module's own USB port, so plugging that cable in
+means the same receiver is visible twice: the header wins, and the warning names
+what was left unopened.
 
 ## Installation
 
@@ -258,9 +277,12 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 | Method | Description |
 |--------|-------------|
-| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation |
+| `IGnssHat::create()` | Factory -- opens the HAT on the header, or a USB receiver when there is none |
+| `IGnssHat::create(options)` | Same factory with `CreateOptions{ useUsb, usbDevicePath }` (see [USB-attached receivers](#usb-attached-receivers)) |
 | `start(config)` | Configure the u-blox module and start data acquisition |
 | `name()` | HAT name (e.g. `"L1 GNSS HAT"`) |
+| `model()` | u-blox module behind the handle: `EUbloxModel::NeoM9N`, `NeoF9P` or `NeoF10T` |
+| `devicePath()` | Node the receiver is reached through (`/dev/spidev0.0`, `/dev/ttyAMA0`, `/dev/ttyACM0`) |
 | `waitAndGetFreshNavigation()` | Block until new data arrives, return `Navigation` |
 | `navigation()` | Return last known `Navigation` immediately |
 | `softResetUbloxSom_HotStart()` | Soft reset (keeps ephemeris/almanac) |
@@ -276,14 +298,6 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `joinForwardForGpsd()` | Block until forwarder thread finishes |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config) |
 
-`IGnssUsb` (same header) extends `IGnssHat` for USB-attached receivers:
-
-| Method | Description |
-|--------|-------------|
-| `IGnssUsb::create(devicePath)` | Factory -- `nullptr` selects the only attached receiver; aborts when none or several are found |
-| `devicePath()` | Device node the receiver was opened on |
-| `model()` | `EUbloxModel::NeoM9N` or `EUbloxModel::NeoF9P`, from UBX-MON-VER |
-
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
 HAT detection helpers in `JimmyPaputto::Hat`: `detectProduct()` (returns the HAT product name from the device-tree EEPROM without instantiating `IGnssHat`) and `readEepromField(field)` (generic EEPROM field reader).
@@ -292,7 +306,7 @@ HAT detection helpers in `JimmyPaputto::Hat`: `detectProduct()` (returns the HAT
 
 Include `<jimmypaputto/GnssHat.h>`. All functions are prefixed with `jp_gnss_hat_` (lifecycle/navigation) or `jp_gnss_` (config helpers, string converters). See the C example above and the header for the full list.
 
-For USB-attached receivers use `jp_gnss_hat_create_usb(device_path)` instead of `jp_gnss_hat_create()`; pass `NULL` to select the only attached receiver. The resulting `jp_gnss_hat_t*` works with every other `jp_gnss_hat_*` function, plus `jp_gnss_hat_usb_device_path()` and `jp_gnss_hat_usb_model()`.
+For USB-attached receivers use `jp_gnss_hat_create_usb(device_path)` when a HAT is seated and you want the USB one anyway; pass `NULL` to select the only attached receiver. Plain `jp_gnss_hat_create()` already falls back to USB when there is no HAT. Either handle works with every other `jp_gnss_hat_*` function, including `jp_gnss_hat_device_path()` and `jp_gnss_hat_model()`.
 
 ### Python
 
@@ -452,14 +466,13 @@ journalctl -u gnsshat-rtk-base -f
 | Directory | Language | Description |
 |-----------|----------|-------------|
 | `examples/cpp/print-navigation` | C++ | Print position, speed, time, fix info |
-| `examples/cpp/print-navigation-usb` | C++ | Same, against a USB-attached receiver |
 | `examples/cpp/print-satellites` | C++ | Per-satellite table with signal quality |
 | `examples/cpp/geofencing` | C++ | Configure and monitor geofences |
 | `examples/cpp/jamming-detector` | C++ | RF interference monitoring |
 | `examples/cpp/timepulse-interrupt` | C++ | Timepulse synchronization |
 | `examples/cpp/hot-start` | C++ | Cold vs hot start timing benchmark |
 | `examples/cpp/rtk` | C++ | RTK base station and rover |
-| `examples/cpp/rtk` (`rtk-base-usb`) | C++ | RTK base over USB, dumps the RTCM3 it produces |
+| `examples/cpp/rtk` (`rtk-base-dump`) | C++ | RTK base survey-in, dumps the RTCM3 it produces |
 | `examples/cpp/time-base` | C++ | Time base mode for improved time accuracy |
 | `examples/cpp/time-mark` | C++ | EXTINT time mark event timestamping |
 | `examples/c/` | C | Same set of examples using the C API |

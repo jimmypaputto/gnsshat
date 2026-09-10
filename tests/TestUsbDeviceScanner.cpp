@@ -174,37 +174,3 @@ TEST(UsbDeviceScanner, MissingByPathDirectoryLeavesAliasEmpty)
     ASSERT_EQ(devices.size(), 1u);
     EXPECT_TRUE(devices[0].byPathAlias.empty());
 }
-
-TEST(UsbDeviceScanner, ExplicitPathIsReturnedWithoutScanning)
-{
-    FakeSysfs sysfs;
-
-    EXPECT_EQ(sysfs.scanner().resolveSingle("/dev/ttyACM7"), "/dev/ttyACM7");
-}
-
-TEST(UsbDeviceScanner, ResolvesTheSoleReceiver)
-{
-    FakeSysfs sysfs;
-    sysfs.addSerialDevice("ttyACM0", "1546", ubloxProduct, "3-1");
-
-    EXPECT_EQ(sysfs.scanner().resolveSingle(nullptr),
-        (sysfs.devRoot() / "ttyACM0").string());
-}
-
-TEST(UsbDeviceScannerDeathTest, TerminatesWhenNoReceiverIsPresent)
-{
-    FakeSysfs sysfs;
-
-    EXPECT_DEATH(sysfs.scanner().resolveSingle(nullptr),
-        "No u-blox USB receiver found");
-}
-
-TEST(UsbDeviceScannerDeathTest, TerminatesRatherThanGuessBetweenReceivers)
-{
-    FakeSysfs sysfs;
-    sysfs.addSerialDevice("ttyACM0", "1546", ubloxProduct, "3-1");
-    sysfs.addSerialDevice("ttyACM1", "1546", ubloxProduct, "3-2");
-
-    EXPECT_DEATH(sysfs.scanner().resolveSingle(nullptr),
-        "explicit device path");
-}

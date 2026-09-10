@@ -14,6 +14,7 @@
 #include "ublox/Gnss.hpp"
 #include "ublox/GnssConfig.hpp"
 #include "ublox/NmeaForwarder.hpp"
+#include "ublox/ReceiverResolver.hpp"
 #include "ublox/RtkFactory.hpp"
 #include "ublox/Run.hpp"
 #include "ublox/SpiDriver.hpp"
@@ -97,7 +98,7 @@ std::enable_if_t<
     }
 }
 
-class GnssHat : public virtual IGnssHat
+class GnssHat : public IGnssHat
 {
 public:
     explicit GnssHat(
@@ -127,6 +128,10 @@ public:
     void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
     SystemHealth systemHealth() const override;
+    std::string devicePath() const override
+    {
+        return commDriver_->devicePath();
+    }
     std::string swVersion() const override
     {
         return gnss_.swVersion();
@@ -181,7 +186,12 @@ public:
 
     std::string_view name() const override
     {
-        return "L1 GNSS HAT";
+        return HatProduct::gnssL1;
+    }
+
+    EUbloxModel model() const override
+    {
+        return EUbloxModel::NeoM9N;
     }
 
     IRtk* rtk() override
@@ -212,7 +222,12 @@ public:
 
     std::string_view name() const override
     {
-        return "L1/L5 GNSS TIME HAT";
+        return HatProduct::gnssL1L5Time;
+    }
+
+    EUbloxModel model() const override
+    {
+        return EUbloxModel::NeoF10T;
     }
 
     IRtk* rtk() override
@@ -312,7 +327,12 @@ public:
 
     std::string_view name() const override
     {
-        return "L1/L5 GNSS RTK HAT";
+        return HatProduct::gnssL1L5Rtk;
+    }
+
+    EUbloxModel model() const override
+    {
+        return EUbloxModel::NeoF9P;
     }
 
     IRtk* rtk() override
@@ -335,12 +355,11 @@ private:
     std::unique_ptr<IRtk> rtk_;
 };
 
-class GnssUsb : public GnssHat, public IGnssUsb
+class GnssUsb : public GnssHat
 {
 public:
-    GnssUsb(std::string devicePath, UbloxIdentity identity)
+    GnssUsb(const std::string& devicePath, UbloxIdentity identity)
     :   GnssHat(std::make_unique<UsbDriver>(devicePath)),
-        devicePath_(std::move(devicePath)),
         identity_(std::move(identity))
     {}
 
@@ -363,11 +382,6 @@ public:
     IRtk* rtk() override
     {
         return nullptr;
-    }
-
-    std::string devicePath() const override
-    {
-        return devicePath_;
     }
 
     EUbloxModel model() const override
@@ -424,15 +438,14 @@ protected:
         );
     }
 
-    std::string devicePath_;
     UbloxIdentity identity_;
 };
 
 class GnssUsbRtk : public GnssUsb
 {
 public:
-    GnssUsbRtk(std::string devicePath, UbloxIdentity identity)
-    :   GnssUsb(std::move(devicePath), std::move(identity)),
+    GnssUsbRtk(const std::string& devicePath, UbloxIdentity identity)
+    :   GnssUsb(devicePath, std::move(identity)),
         rtk_(nullptr)
     {}
 
@@ -498,39 +511,161 @@ namespace Hat
     }
 }  // namespace Hat
 
-IGnssHat* IGnssHat::create()
+namespace
 {
-    const std::string GnssL1HatProduct = "L1 GNSS HAT";
-    const std::string GnssL1L5TimeHatProduct = "L1/L5 GNSS TIME HAT";
-    const std::string GnssL1L5RtkHatProduct = "L1/L5 GNSS RTK HAT";
-    const std::string hatProduct = readHatProduct();
- 
-    if (GnssL1HatProduct == hatProduct)
-        return new GnssL1Hat();
-    if (GnssL1L5TimeHatProduct == hatProduct)
-        return new GnssL1L5TimeHat();
-    if (GnssL1L5RtkHatProduct == hatProduct)
-        return new GnssL1L5TRtkHat();
 
-    printf("[GNSS] Unknown HAT, FATAL\r\n");
+[[noreturn]] void reportUnresolvable(const ReceiverSelection& selection,
+    const std::vector<UsbGnssDevice>& usbDevices)
+{
+    switch (selection.resolution)
+    {
+        case EReceiverResolution::NoReceiver:
+            fprintf(
+                stderr,
+                "[GNSS] No GNSS HAT on the header and no u-blox receiver on "
+                "USB (vendor %s), FATAL\r\n",
+                UsbDeviceScanner::ubloxVendorId
+            );
+            break;
+
+        case EReceiverResolution::UnknownHat:
+            fprintf(
+                stderr,
+                "[GNSS] Unknown HAT '%s' and no u-blox receiver on USB to fall "
+                "back to, FATAL\r\n",
+                selection.hatProduct.c_str()
+            );
+            break;
+
+        case EReceiverResolution::UsbRequestedButAbsent:
+            fprintf(
+                stderr,
+                "[GNSS] A USB receiver was requested but none is attached "
+                "(USB vendor %s), FATAL\r\n",
+                UsbDeviceScanner::ubloxVendorId
+            );
+            break;
+
+        case EReceiverResolution::AmbiguousUsb:
+            fprintf(
+                stderr,
+                "[GNSS] Found %zu u-blox USB receivers, refusing to guess:\r\n",
+                usbDevices.size()
+            );
+            printUsbCandidates(stderr, usbDevices);
+            fprintf(
+                stderr,
+                "[GNSS] Pass an explicit device path (prefer the stable "
+                "alias), FATAL\r\n"
+            );
+            break;
+
+        case EReceiverResolution::Ok:
+            break;
+    }
+
     std::terminate();
 }
 
-IGnssUsb* IGnssUsb::create(const char* devicePath)
+void warnAboutIdleUsb(const ReceiverSelection& selection,
+    const std::vector<UsbGnssDevice>& usbDevices)
 {
-    const UsbDeviceScanner scanner;
-    const std::string resolved = scanner.resolveSingle(devicePath);
+    fprintf(
+        stderr,
+        "[GNSS] '%s' detected on the HAT header, opening it. A u-blox receiver "
+        "is also attached over USB:\r\n",
+        selection.hatProduct.c_str()
+    );
+    printUsbCandidates(stderr, usbDevices);
+    fprintf(
+        stderr,
+        "[GNSS] The L1 and RTK HATs expose the module's own USB port, so this "
+        "may be the same receiver. Pass CreateOptions{ .useUsb = true } to "
+        "open it over USB instead\r\n"
+    );
+}
+
+[[noreturn]] void reportUnusableUsbReceiver(const std::string& devicePath,
+    const UbloxIdentity& identity)
+{
+    if (EUbloxModel::NeoF10T == identity.model)
+    {
+        fprintf(
+            stderr,
+            "[GNSS] The NEO-F10T at %s is not supported over USB - its timing "
+            "features need the L1/L5 GNSS TIME HAT, FATAL\r\n",
+            devicePath.c_str()
+        );
+        std::terminate();
+    }
+
+    fprintf(
+        stderr,
+        "[GNSS] Unrecognised u-blox receiver at %s (sw '%s', hw '%s'), "
+        "FATAL\r\n",
+        devicePath.c_str(),
+        identity.swVersion.c_str(),
+        identity.hwVersion.c_str()
+    );
+    std::terminate();
+}
+
+}  // namespace
+
+IGnssHat* IGnssHat::create()
+{
+    return create(CreateOptions{});
+}
+
+IGnssHat* IGnssHat::create(const CreateOptions& options)
+{
+    // Both lookups are plain file reads, so the losing transport costs nothing
+    // and the winner can still report what else is plugged in.
+    const std::string hatProduct = readHatProduct();
+    const std::vector<UsbGnssDevice> usbDevices = UsbDeviceScanner().scan();
+
+    const ReceiverSelection selection = resolveReceiver(
+        ReceiverRequest{ options.useUsb, options.usbDevicePath },
+        hatProduct,
+        usbDevices
+    );
+
+    if (EReceiverResolution::Ok != selection.resolution)
+        reportUnresolvable(selection, usbDevices);
+
+    if (EReceiverTransport::Hat == selection.transport)
+    {
+        if (selection.usbAlsoAttached)
+            warnAboutIdleUsb(selection, usbDevices);
+
+        if (HatProduct::gnssL1 == hatProduct)
+            return new GnssL1Hat();
+        if (HatProduct::gnssL1L5Time == hatProduct)
+            return new GnssL1L5TimeHat();
+        // The resolver only names the HAT transport for products we drive.
+        return new GnssL1L5TRtkHat();
+    }
+
+    if (selection.unknownHatIgnored)
+    {
+        fprintf(
+            stderr,
+            "[GNSS] Unknown HAT '%s' on the header, falling back to the "
+            "u-blox receiver on USB\r\n",
+            selection.hatProduct.c_str()
+        );
+    }
 
     UbloxIdentity identity;
     {
         // Closed before the real driver opens the same node.
-        UsbDriver probeDriver(resolved);
+        UsbDriver probeDriver(selection.usbDevicePath);
         if (!probeDriver.isOpen())
         {
             fprintf(
                 stderr,
                 "[GNSS] Cannot open USB receiver at %s, FATAL\r\n",
-                resolved.c_str()
+                selection.usbDevicePath.c_str()
             );
             std::terminate();
         }
@@ -538,19 +673,11 @@ IGnssUsb* IGnssUsb::create(const char* devicePath)
     }
 
     if (EUbloxModel::NeoF9P == identity.model)
-        return new GnssUsbRtk(resolved, std::move(identity));
+        return new GnssUsbRtk(selection.usbDevicePath, std::move(identity));
     if (EUbloxModel::NeoM9N == identity.model)
-        return new GnssUsb(resolved, std::move(identity));
+        return new GnssUsb(selection.usbDevicePath, std::move(identity));
 
-    fprintf(
-        stderr,
-        "[GNSS] Unrecognised u-blox receiver at %s (sw '%s', hw '%s'), "
-        "FATAL\r\n",
-        resolved.c_str(),
-        identity.swVersion.c_str(),
-        identity.hwVersion.c_str()
-    );
-    std::terminate();
+    reportUnusableUsbReceiver(selection.usbDevicePath, identity);
 }
 
 GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
@@ -1149,6 +1276,21 @@ std::string timeMarkTimeBase2string(const ETimeMarkTimeBase e)
         return "GNSS";
     case ETimeMarkTimeBase::UTC:
         return "UTC";
+    default:
+        return "Unknown";
+    }
+}
+
+std::string ubloxModel2string(const EUbloxModel e)
+{
+    switch (e)
+    {
+    case EUbloxModel::NeoM9N:
+        return "NEO-M9N";
+    case EUbloxModel::NeoF9P:
+        return "NEO-F9P";
+    case EUbloxModel::NeoF10T:
+        return "NEO-F10T";
     default:
         return "Unknown";
     }
