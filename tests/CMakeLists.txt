@@ -23,7 +23,7 @@ add_executable(GnssHatTests
 )
 set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 
-target_include_directories(GnssHatTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(GnssHatTests PRIVATE ${GNSSHAT_ROOT_DIR}/src)
 target_link_libraries(GnssHatTests gnsshat GTest::GTest GTest::Main)
 
 add_test(NAME GnssHatTests COMMAND GnssHatTests)
