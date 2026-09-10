@@ -15,5 +15,5 @@ set_target_properties(TimeMark PROPERTIES OUTPUT_NAME time-mark)
 
 target_link_libraries(
     TimeMark
-    GnssHat
+    gnsshat
 )

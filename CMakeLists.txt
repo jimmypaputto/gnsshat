@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-project(GnssHat VERSION 1.0.0)
+project(gnsshat VERSION 1.0.0)
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
@@ -132,11 +132,11 @@ set(LIB_SOURCES
     src/GnssHat_C.cpp
 )
 
-add_library(GnssHat SHARED ${LIB_SOURCES})
+add_library(gnsshat SHARED ${LIB_SOURCES})
 
 # Installed headers live in <includedir>/jimmypaputto, and public sources include
 # them as <jimmypaputto/...>, so the exported include dir must be <includedir>.
-target_include_directories(GnssHat
+target_include_directories(gnsshat
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
@@ -171,20 +171,19 @@ set_source_files_properties(src/common/BuildInfo.cpp PROPERTIES
 add_custom_target(BuildInfoRefresh ALL
     COMMAND ${CMAKE_COMMAND} -E touch_nocreate ${CMAKE_SOURCE_DIR}/src/common/BuildInfo.cpp
 )
-add_dependencies(GnssHat BuildInfoRefresh)
+add_dependencies(gnsshat BuildInfoRefresh)
 
-set_target_properties(GnssHat PROPERTIES
+set_target_properties(gnsshat PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    OUTPUT_NAME gnsshat
 )
 
-target_link_libraries(GnssHat gpiod pthread util)
+target_link_libraries(gnsshat gpiod pthread util)
 
 if(NTRIP_TLS_SUPPORT)
     find_package(OpenSSL REQUIRED)
-    target_compile_definitions(GnssHat PUBLIC GNSSHAT_HAS_TLS)
-    target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(gnsshat PUBLIC GNSSHAT_HAS_TLS)
+    target_link_libraries(gnsshat OpenSSL::SSL OpenSSL::Crypto)
     message(STATUS "NTRIP TLS support enabled")
 endif()
 
@@ -201,7 +200,7 @@ endif()
 if(BUILD_EXAMPLES)
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
     execute_process(COMMAND ln -snf ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/include/jimmypaputto)
-    target_include_directories(GnssHat PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
+    target_include_directories(gnsshat PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
 
     # C examples
     add_subdirectory(examples/c/geofencing)
@@ -284,8 +283,8 @@ if(BUILD_EXAMPLES)
     set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${SYMLINK_FILES})
 endif()
 
-install(TARGETS GnssHat
-    EXPORT GnssHatTargets
+install(TARGETS gnsshat
+    EXPORT gnsshatTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
@@ -345,34 +344,34 @@ install(
         ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/ntrip
 )
 
-# ── CMake package config (enables find_package(GnssHat)) ────────────────────
+# ── CMake package config (enables find_package(gnsshat)) ────────────────────
 
 include(CMakePackageConfigHelpers)
 
-install(EXPORT GnssHatTargets
-    FILE GnssHatTargets.cmake
-    NAMESPACE GnssHat::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+install(EXPORT gnsshatTargets
+    FILE gnsshatTargets.cmake
+    NAMESPACE gnsshat::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gnsshat
 )
 
 configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/GnssHatConfig.cmake.in
-    ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+    ${CMAKE_SOURCE_DIR}/cmake/gnsshatConfig.cmake.in
+    ${CMAKE_BINARY_DIR}/gnsshatConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gnsshat
 )
 
 write_basic_package_version_file(
-    ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+    ${CMAKE_BINARY_DIR}/gnsshatConfigVersion.cmake
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
 
 install(
     FILES
-        ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
-        ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+        ${CMAKE_BINARY_DIR}/gnsshatConfig.cmake
+        ${CMAKE_BINARY_DIR}/gnsshatConfigVersion.cmake
     DESTINATION
-        ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+        ${CMAKE_INSTALL_LIBDIR}/cmake/gnsshat
 )
 
 # ── pkg-config ───────────────────────────────────────────────────────────────
@@ -433,12 +432,12 @@ file(WRITE ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake "
         string(REPLACE \";\" \"\\n  \" FAILED_LIST \"\${FAILED_FILES}\")
         message(FATAL_ERROR \"Failed to remove the following files (try running with sudo):\\n  \${FAILED_LIST}\")
     endif()
-    message(STATUS \"GnssHat uninstalled.\")
+    message(STATUS \"gnsshat uninstalled.\")
 ")
 
 add_custom_target(uninstall
     COMMAND ${CMAKE_COMMAND} -DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR} -P ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake
-    COMMENT "Uninstalling GnssHat"
+    COMMENT "Uninstalling gnsshat"
 )
 
 if(BUILD_PYTHON)

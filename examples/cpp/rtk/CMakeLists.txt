@@ -8,12 +8,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(RtkBase src/RtkBase.cpp)
 set_target_properties(RtkBase PROPERTIES OUTPUT_NAME rtk-base)
-target_link_libraries(RtkBase GnssHat)
+target_link_libraries(RtkBase gnsshat)
 
 add_executable(RtkRover src/RtkRover.cpp)
 set_target_properties(RtkRover PROPERTIES OUTPUT_NAME rtk-rover)
-target_link_libraries(RtkRover GnssHat)
+target_link_libraries(RtkRover gnsshat)
 
 add_executable(RtkServer src/RtkServer.cpp)
 set_target_properties(RtkServer PROPERTIES OUTPUT_NAME rtk-server)
-target_link_libraries(RtkServer GnssHat)
+target_link_libraries(RtkServer gnsshat)

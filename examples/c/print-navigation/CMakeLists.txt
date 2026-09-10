@@ -4,4 +4,4 @@ project(PrintNavigation_C)
 
 add_executable(print_navigation src/print_navigation.c)
 set_target_properties(print_navigation PROPERTIES OUTPUT_NAME print-navigation)
-target_link_libraries(print_navigation GnssHat pthread)
+target_link_libraries(print_navigation gnsshat pthread)

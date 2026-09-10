@@ -16,5 +16,5 @@ set_target_properties(JammingDetector PROPERTIES OUTPUT_NAME jamming-detector)
 
 target_link_libraries(
     JammingDetector
-    GnssHat
+    gnsshat
 )
