@@ -16,5 +16,5 @@ set_target_properties(TimepulseInterrupt PROPERTIES OUTPUT_NAME timepulse-interr
 
 target_link_libraries(
     TimepulseInterrupt
-    GnssHat
+    gnsshat
 )

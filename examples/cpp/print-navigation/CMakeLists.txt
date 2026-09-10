@@ -8,8 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(PrintNavigationAdvanced src/PrintNavigationAdvanced.cpp)
 set_target_properties(PrintNavigationAdvanced PROPERTIES OUTPUT_NAME print-navigation-advanced)
-target_link_libraries(PrintNavigationAdvanced GnssHat)
+target_link_libraries(PrintNavigationAdvanced gnsshat)
 
 add_executable(PrintNavigationBasic src/PrintNavigationBasic.cpp)
 set_target_properties(PrintNavigationBasic PROPERTIES OUTPUT_NAME print-navigation-basic)
-target_link_libraries(PrintNavigationBasic GnssHat)
+target_link_libraries(PrintNavigationBasic gnsshat)

@@ -16,5 +16,5 @@ set_target_properties(HotStart PROPERTIES OUTPUT_NAME hot-start)
 
 target_link_libraries(
     HotStart
-    GnssHat
+    gnsshat
 )

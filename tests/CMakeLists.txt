@@ -1,6 +1,6 @@
 # Jimmy Paputto 2026
 
-if(NOT TARGET GnssHat)
+if(NOT TARGET gnsshat)
     message(FATAL_ERROR
         "tests/ must be built via the root CMakeLists.txt with -DBUILD_TESTS=ON.\n"
         "Run: cmake .. -DBUILD_TESTS=ON"
@@ -24,6 +24,6 @@ add_executable(GnssHatTests
 set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 
 target_include_directories(GnssHatTests PRIVATE ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(GnssHatTests GnssHat GTest::GTest GTest::Main)
+target_link_libraries(GnssHatTests gnsshat GTest::GTest GTest::Main)
 
 add_test(NAME GnssHatTests COMMAND GnssHatTests)

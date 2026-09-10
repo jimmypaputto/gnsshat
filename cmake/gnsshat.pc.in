@@ -2,7 +2,7 @@ prefix=@CMAKE_INSTALL_PREFIX@
 libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
 
-Name: GnssHat
+Name: gnsshat
 Description: Driver library for Jimmy Paputto GNSS HATs for Raspberry Pi
 Version: @PROJECT_VERSION@
 Libs: -L${libdir} -lgnsshat

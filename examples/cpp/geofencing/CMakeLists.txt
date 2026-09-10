@@ -16,5 +16,5 @@ set_target_properties(Geofencing PROPERTIES OUTPUT_NAME geofencing)
 
 target_link_libraries(
     Geofencing
-    GnssHat
+    gnsshat
 )

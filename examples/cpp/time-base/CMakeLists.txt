@@ -8,4 +8,4 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(TimeBase src/TimeBase.cpp)
 set_target_properties(TimeBase PROPERTIES OUTPUT_NAME time-base)
-target_link_libraries(TimeBase GnssHat)
+target_link_libraries(TimeBase gnsshat)
