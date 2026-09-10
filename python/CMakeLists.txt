@@ -22,7 +22,7 @@ if(TARGET gnsshat)
     message(STATUS "Library: gnsshat (build target)")
     target_include_directories(gnsshat_python PRIVATE
         ${Python3_INCLUDE_DIRS}
-        ${CMAKE_SOURCE_DIR}/src
+        ${GNSSHAT_ROOT_DIR}/src
     )
     target_link_libraries(gnsshat_python PRIVATE
         gnsshat
