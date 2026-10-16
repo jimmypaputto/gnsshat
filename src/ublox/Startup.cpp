@@ -862,9 +862,11 @@ bool StartupBase::pollMonVer(int timeoutMs)
     }
     while (std::chrono::steady_clock::now() < deadline);
 
-    fprintf(stderr,
+    fprintf(
+        stderr,
         "[Startup] MON-VER poll timed out after %d ms (non-fatal)\r\n",
-        timeoutMs);
+        timeoutMs
+    );
     return true;  // best-effort: do not abort startup
 }
 

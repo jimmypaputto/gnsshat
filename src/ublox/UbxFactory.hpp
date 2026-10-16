@@ -35,9 +35,6 @@
 namespace JimmyPaputto
 {
 
-// Deserializes frames into message objects owned by this factory. The
-// returned reference stays valid until the next create() for the same type,
-// so each parser needs its own factory.
 class UbxFactory final
 {
 public:

@@ -1,5 +1,5 @@
 /*
- * Jimmy Paputto 2021
+ * Jimmy Paputto 2026
  */
 
 #ifndef NAVIGATION_STORE_HPP_
@@ -18,9 +18,6 @@
 namespace JimmyPaputto
 {
 
-// Latest data reported by one receiver: navigation, time mark, system health
-// and MON-VER. Each IGnssHat owns its own store; the ublox thread writes it,
-// the public API and the NMEA forwarder read copies of it.
 class NavigationStore final
 {
 public:
@@ -29,7 +26,8 @@ public:
     void geofencingCfg(const Geofencing::Cfg& cfg);
     void geofencingNav(const Geofencing::Nav& nav);
     void rfBlocks(const std::vector<RfBlock>& rfBlocks);
-    void rfBlocksSpectrumData(const std::vector<RfBlockSpectrumData>& rfBlocksSpectrumData);
+    void rfBlocksSpectrumData(
+        const std::vector<RfBlockSpectrumData>& rfBlocksSpectrumData);
     void satellites(const std::vector<SatelliteInfo>& satellites);
 
     void monVer(const std::string& swVersion, const std::string& hwVersion,

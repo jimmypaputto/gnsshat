@@ -124,8 +124,6 @@ protected:
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
 
     std::unique_ptr<ICommDriver> commDriver_;
-    // Declared before everything that holds a reference to it, so it is
-    // destroyed last.
     NavigationStore navigationStore_;
     std::unique_ptr<IUbloxConfigRegistry> configRegistry_;
     std::unique_ptr<UbxParser> ubxParser_;
