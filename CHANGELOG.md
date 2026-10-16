@@ -22,7 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - NMEA forwarding for gpsd ran on a free-running 1 s timer and drifted against
   the navigation epoch, causing a -1 s chrony step every ~30 minutes. The
   forwarder now waits on the navigation notifier and emits one deduplicated
-  sentence set per epoch ([#38](https://github.com/jimmypaputto/gnsshat/issues/38))
+  sentence set per epoch
+  ([#38](https://github.com/jimmypaputto/gnsshat/issues/38))
 - `find_package(gnsshat)` failed for TLS builds, because the exported target
   links `OpenSSL::SSL` and `OpenSSL::Crypto`. The package config now calls
   `find_dependency(OpenSSL)`
