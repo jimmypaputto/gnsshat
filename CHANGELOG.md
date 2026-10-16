@@ -7,10 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-16
+
+### Added
+- gnsshat can be pulled into another CMake project with `add_subdirectory()`
+  or `FetchContent`. Paths no longer assume a top-level build, and the install,
+  CMake package, pkg-config, ldconfig and `uninstall` rules are skipped then
+
+### Changed
+- The CMake package is now `gnsshat` with the imported target
+  `gnsshat::gnsshat`, replacing `GnssHat` / `GnssHat::GnssHat`. Breaking for
+  CMake consumers only: the library file and the pkg-config name stay `gnsshat`
+- `BUILD_TOOLS` now defaults to OFF, because the quick-start build failed
+  without `toml11`. Enable the CLI tools with `-DBUILD_TOOLS=ON`
+
 ### Fixed
 - Navigation notifications fired twice per epoch, because every SPI drain pass
   notified and the module sends its output in two bursts. They now fire only
   after a buffer carrying NAV-PVT is parsed
+  ([#42](https://github.com/jimmypaputto/gnsshat/pull/42))
 - gpsd bridge forwarded empty NMEA after boot when the GNSS engine came up
   stopped. Startup now ends with a controlled GNSS start (`UBX-CFG-RST` 0x09)
   and the hot-start reset waits 1 s for the receiver
@@ -31,10 +46,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   MON-VER firmware version, last position, time mark), because receiver data
   lived in a process-wide singleton. Each `IGnssHat` now owns its own data,
   so destroying the object and creating a new one starts clean
+  ([#44](https://github.com/jimmypaputto/gnsshat/pull/44))
+- The exported include directory was `<includedir>/jimmypaputto`, one level too
+  deep for `#include <jimmypaputto/GnssHat.hpp>`. The CMake target and
+  `gnsshat.pc` now export `<includedir>`
+  ([#33](https://github.com/jimmypaputto/gnsshat/issues/33))
+- gpsd could stay inactive after boot, because `jpgnss2gpsd-bridge.service`
+  reported itself started before the PTY existed. The unit now stays
+  activating until `/dev/jimmypaputto/gnss` is created
+  ([#33](https://github.com/jimmypaputto/gnsshat/issues/33))
+- gpsd bridge startup messages reached journald only when the process exited,
+  with misleading timestamps. The bridge now line-buffers stdout
 
 ### Removed
 - `GenericSingleton`. Receiver data, decoded UBX messages and startup state
   are now owned by each `IGnssHat` instance
+  ([#44](https://github.com/jimmypaputto/gnsshat/pull/44))
 
 ## [1.1.0] - 2026-05-06
 

@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-project(gnsshat VERSION 1.0.0)
+project(gnsshat VERSION 1.2.0)
 
 # Absolute paths to this project, so they stay correct when gnsshat is pulled
 # into another build with add_subdirectory or FetchContent -- CMAKE_SOURCE_DIR
