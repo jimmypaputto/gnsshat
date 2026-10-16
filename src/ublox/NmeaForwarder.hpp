@@ -14,8 +14,8 @@
 #include <termios.h>
 #include <sys/stat.h>
 
-#include "Gnss.hpp"
 #include "Navigation.hpp"
+#include "NavigationStore.hpp"
 #include "common/Notifier.hpp"
 
 
@@ -29,7 +29,8 @@ public:
     ~NmeaForwarder();
 
     bool createVirtualTty();
-    void startForwarding(const Gnss& gnss, Notifier& navigationNotifier);
+    void startForwarding(const NavigationStore& navigationStore,
+        Notifier& navigationNotifier);
     void stopForwarding();
     void joinForwarding();
 
@@ -37,8 +38,8 @@ public:
     bool isRunning() const;
 
 private:
-    void forwardingThread(const Gnss& gnss, Notifier& navigationNotifier,
-                          std::stop_token stoken);
+    void forwardingThread(const NavigationStore& navigationStore,
+        Notifier& navigationNotifier, std::stop_token stoken);
     std::string generateNmeaGGA(const Navigation& navigation);
     std::string generateNmeaRMC(const Navigation& navigation);
     std::string generateNmeaGSA(const Navigation& navigation);

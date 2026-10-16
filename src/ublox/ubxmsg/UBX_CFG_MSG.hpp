@@ -25,7 +25,7 @@ public:
     explicit UBX_CFG_MSG(const EUbxMsg& eUbxMsg)
     {
         sendRateOnPort_.fill(0x00);
-        const auto classMsgId = UbxClassMsgId::instance().translate(eUbxMsg);
+        const auto classMsgId = UbxClassMsgId::translate(eUbxMsg);
         classId_ = classMsgId.first;
         msgId_ = classMsgId.second;
     }
@@ -34,7 +34,7 @@ public:
         const std::array<uint8_t, numberOfUbxPrts>& sendRateOnPort)
     :	sendRateOnPort_(sendRateOnPort)
     {
-        const auto classMsgId = UbxClassMsgId::instance().translate(eUbxMsg);
+        const auto classMsgId = UbxClassMsgId::translate(eUbxMsg);
         classId_ = classMsgId.first;
         msgId_ = classMsgId.second;
     }
@@ -74,7 +74,7 @@ public:
 
     static std::vector<uint8_t> poll(const EUbxMsg& eUbxMsg)
     {
-        const auto classMsgId = UbxClassMsgId::instance().translate(eUbxMsg);
+        const auto classMsgId = UbxClassMsgId::translate(eUbxMsg);
         return buildFrame({
             0xB5, 0x62, 0x06, 0x01, 0x02, 0x00, classMsgId.first, classMsgId.second
         });
@@ -82,7 +82,7 @@ public:
 
     inline EUbxMsg eUbxMsg() const
     {
-        return UbxClassMsgId::instance().translate({ classId_, msgId_ });
+        return UbxClassMsgId::translate({ classId_, msgId_ });
     }
 
     inline std::array<uint8_t, numberOfUbxPrts> sendRates() const

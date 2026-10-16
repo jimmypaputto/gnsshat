@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "IUbloxConfigRegistry.hpp"
+#include "NavigationStore.hpp"
 #include "UbxCallbacks.hpp"
 #include "common/Notifier.hpp"
 #include "ubxmsg/IUbxMsg.hpp"
@@ -19,19 +20,28 @@
 namespace JimmyPaputto
 {
 
+class UbxFactory;
+
 class UbxParser final
 {
 public:
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
-        Notifier& timeMarkNotifier);
+        NavigationStore& navigationStore, Notifier& timeMarkNotifier);
+    ~UbxParser();
 
     std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
 
     // True when the buffer just parsed carried a NAV-PVT frame, i.e. a new
-    // navigation epoch reached Gnss.
+    // navigation epoch reached the NavigationStore.
     bool consumeNavigationEpoch()
     {
         return ubxCallbacks_.consumeNavigationEpoch();
+    }
+
+    // True when a MON-VER frame was parsed since the last call.
+    bool consumeMonVer()
+    {
+        return ubxCallbacks_.consumeMonVer();
     }
 
     static void addChecksum(std::vector<uint8_t>& frame);
@@ -48,6 +58,7 @@ private:
     std::vector<uint8_t> unfinishedFrameFromBuffer_;
     IUbloxConfigRegistry& configRegistry_;
     UbxCallbacks ubxCallbacks_;
+    std::unique_ptr<UbxFactory> ubxFactory_;
 };
 
 }  // JimmyPaputto

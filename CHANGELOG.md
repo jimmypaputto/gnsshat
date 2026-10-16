@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `find_package(gnsshat)` failed for TLS builds, because the exported target
   links `OpenSSL::SSL` and `OpenSSL::Crypto`. The package config now calls
   `find_dependency(OpenSSL)`
+- A new `IGnssHat` object inherited the previous object's data (geofences,
+  MON-VER firmware version, last position, time mark), because receiver data
+  lived in a process-wide singleton. Each `IGnssHat` now owns its own data,
+  so destroying the object and creating a new one starts clean
+
+### Removed
+- `GenericSingleton`. Receiver data, decoded UBX messages and startup state
+  are now owned by each `IGnssHat` instance
 
 ## [1.1.0] - 2026-05-06
 

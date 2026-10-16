@@ -14,7 +14,6 @@
 
 #include "common/Utils.hpp"
 #include "ublox/Geofencing.hpp"
-#include "ublox/Gnss.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/UbxCfgKeys.hpp"
@@ -33,7 +32,8 @@ StartupBase::StartupBase(ICommDriver& commDriver,
 :   commDriver_(commDriver),
     configRegistry_(configRegistry),
     ubxParser_(ubxParser),
-    rxBuff_(rxBuffSize)
+    rxBuff_(rxBuffSize),
+    expectedConfigValues_(defaultExpectedConfigValues_)
 {
     timepulsePinConfigKeys_.reserve(11);
     timepulsePinConfigKeys_.push_back(UbxCfgKeys::CFG_TP_TP1_ENA);
@@ -695,7 +695,8 @@ enum class E_CFG_TXREADY_INTERFACE : uint8_t
     SPI = 0x01
 };
 
-std::unordered_map<uint32_t, std::vector<uint8_t>> StartupBase::expectedConfigValues_ = {
+const std::unordered_map<uint32_t, std::vector<uint8_t>>
+StartupBase::defaultExpectedConfigValues_ = {
     {UbxCfgKeys::CFG_SPI_MAXFF,           {0x3F}},  // 63
     {UbxCfgKeys::CFG_SPI_CPOLARITY,       {0x00}},
     {UbxCfgKeys::CFG_SPI_CPHASE,          {0x00}},
@@ -826,14 +827,15 @@ void StartupBase::sendGnssEngineStart()
 bool StartupBase::pollMonVer(int timeoutMs)
 {
     // UBX-MON-VER is poll-only (not periodically emitted). Send the poll and
-    // feed any received bytes through the parser so the registered MON-VER
-    // callback updates Gnss::instance() with the receiver/firmware version.
+    // feed any received bytes through the parser until its MON-VER callback
+    // fires and stores the receiver/firmware version.
+    ubxParser_.consumeMonVer();  // forget any MON-VER parsed before this poll
     const auto pollFrame = ubxmsg::UBX_MON_VER::poll();
     std::ranges::fill(rxBuff_, 0);
     commDriver_.transmitReceive(pollFrame, rxBuff_);
     auto unfinished = ubxParser_.parse(rxBuff_);
 
-    if (!Gnss::instance().swVersion().empty())
+    if (ubxParser_.consumeMonVer())
         return true;
 
     const auto deadline = std::chrono::steady_clock::now()
@@ -855,7 +857,7 @@ bool StartupBase::pollMonVer(int timeoutMs)
             std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
         );
 
-        if (!Gnss::instance().swVersion().empty())
+        if (ubxParser_.consumeMonVer())
             return true;
     }
     while (std::chrono::steady_clock::now() < deadline);

@@ -56,9 +56,9 @@ protected:
     void sendGnssEngineStart();
     // Sends UBX-MON-VER poll and feeds the reply (or any pending data) to the
     // parser for up to `timeoutMs`. The MON-VER callback registered with
-    // UbxParser populates Gnss::instance().swVersion()/hwVersion()/extensions.
-    // Always returns true (best-effort: missing MON-VER must not abort
-    // startup).
+    // UbxParser stores swVersion()/hwVersion()/extensions in the
+    // NavigationStore. Always returns true (best-effort: missing MON-VER must
+    // not abort startup).
     bool pollMonVer(int timeoutMs = 500);
     std::vector<uint8_t> getExpectedValue(const uint32_t key);
 
@@ -69,8 +69,11 @@ protected:
     std::vector<uint32_t> navigationFilterKeys_;
     static constexpr uint32_t rxBuffSize = 1024;
     std::vector<uint8_t> rxBuff_;
-    static std::unordered_map<uint32_t, std::vector<uint8_t>>
-        expectedConfigValues_;
+    std::unordered_map<uint32_t, std::vector<uint8_t>> expectedConfigValues_;
+
+private:
+    static const std::unordered_map<uint32_t, std::vector<uint8_t>>
+        defaultExpectedConfigValues_;
 };
 
 class M9NStartup: public StartupBase, public IStartupStrategy

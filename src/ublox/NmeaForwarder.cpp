@@ -187,7 +187,7 @@ bool NmeaForwarder::createVirtualTty()
     return true;
 }
 
-void NmeaForwarder::startForwarding(const Gnss& gnss,
+void NmeaForwarder::startForwarding(const NavigationStore& navigationStore,
     Notifier& navigationNotifier)
 {
     if (forwardingThread_.joinable())
@@ -212,8 +212,8 @@ void NmeaForwarder::startForwarding(const Gnss& gnss,
 
     lastEpoch_.clear();
     forwardingThread_ = std::jthread(
-        [this, &gnss, &navigationNotifier](std::stop_token stoken) {
-            forwardingThread(gnss, navigationNotifier, stoken);
+        [this, &navigationStore, &navigationNotifier](std::stop_token stoken) {
+            forwardingThread(navigationStore, navigationNotifier, stoken);
         }
     );
 }
@@ -238,7 +238,7 @@ bool NmeaForwarder::isRunning() const
         && !forwardingThread_.get_stop_token().stop_requested();
 }
 
-void NmeaForwarder::forwardingThread(const Gnss& gnss,
+void NmeaForwarder::forwardingThread(const NavigationStore& navigationStore,
     Notifier& navigationNotifier, std::stop_token stoken)
 {
     uint64_t navigationCursor = 0;
@@ -252,11 +252,7 @@ void NmeaForwarder::forwardingThread(const Gnss& gnss,
         if (!navigationNotifier.waitForNewGeneration(navigationCursor, stoken))
             return;
 
-        if (!gnss.lock())
-            continue;
-
-        const auto nav = gnss.navigation();
-        gnss.unlock();
+        const auto nav = navigationStore.navigation();
 
         // Guard only: the run loop now notifies once per navigation epoch.
         // NMEA time has 1 s resolution, so a repeated epoch would confuse gpsd.

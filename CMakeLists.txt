@@ -129,8 +129,8 @@ set(LIB_SOURCES
     src/ublox/ubxmsg/IUbxMsg.cpp
     src/ublox/ubxmsg/UBX_CFG_VALGET.cpp
     src/ublox/BaseConfig.cpp
-    src/ublox/Gnss.cpp
     src/ublox/GnssConfig.cpp
+    src/ublox/NavigationStore.cpp
     src/ublox/NmeaForwarder.cpp
     src/ublox/Rtcm3Parser.cpp
     src/ublox/Rtcm3Store.cpp
