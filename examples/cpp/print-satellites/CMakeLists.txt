@@ -8,8 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(PrintSatellitesBasic src/PrintSatellitesBasic.cpp)
 set_target_properties(PrintSatellitesBasic PROPERTIES OUTPUT_NAME print-satellites-basic)
-target_link_libraries(PrintSatellitesBasic GnssHat)
+target_link_libraries(PrintSatellitesBasic gnsshat)
 
 add_executable(PrintSatellitesAdvanced src/PrintSatellitesAdvanced.cpp)
 set_target_properties(PrintSatellitesAdvanced PROPERTIES OUTPUT_NAME print-satellites-advanced)
-target_link_libraries(PrintSatellitesAdvanced GnssHat)
+target_link_libraries(PrintSatellitesAdvanced gnsshat)

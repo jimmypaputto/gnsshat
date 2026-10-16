@@ -7,7 +7,6 @@
 #include <algorithm>
 
 #include "EUbxMsg.hpp"
-#include "Gnss.hpp"
 #include "UbxFactory.hpp"
 #include "Ublox.hpp"
 
@@ -25,10 +24,10 @@ namespace JimmyPaputto
 {
 
 UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
-    Notifier& timeMarkNotifier)
+    NavigationStore& navigationStore, Notifier& timeMarkNotifier)
 :   endFrameIt_(frames_.end()),
     configRegistry_(configRegistry),
-    ubxCallbacks_(configRegistry, timeMarkNotifier)
+    ubxCallbacks_(configRegistry, navigationStore, timeMarkNotifier)
 {
     constexpr uint16_t maxFrameSize = 1024;
     unfinishedFrameFromBuffer_.reserve(maxFrameSize);
@@ -48,12 +47,12 @@ std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
             continue;
 
         const auto& frame = *frameIt;
-        const auto eUbxMsg = UbxClassMsgId::instance().translate(
+        const auto eUbxMsg = UbxClassMsgId::translate(
             { frame[2], frame[3] }
         );
         if (eUbxMsg != EUbxMsg::END_UBX)
         {
-            ubxCallbacks_.run(UbxFactory::create(eUbxMsg, frame), eUbxMsg);
+            ubxCallbacks_.run(ubxFactory_.create(eUbxMsg, frame), eUbxMsg);
         }
     }
     return unfinishedFrameFromBuffer_;

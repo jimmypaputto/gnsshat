@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# A TLS build exports OpenSSL::SSL and OpenSSL::Crypto in the link interface of
+# gnsshat::gnsshat, and the installed NTRIP headers include <openssl/ssl.h>, so
+# the consumer has to find OpenSSL before the imported targets are created.
+set(gnsshat_NTRIP_TLS_SUPPORT @NTRIP_TLS_SUPPORT@)
+if(gnsshat_NTRIP_TLS_SUPPORT)
+    find_dependency(OpenSSL)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/gnsshatTargets.cmake")
+
+check_required_components(gnsshat)

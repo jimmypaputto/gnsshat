@@ -2,7 +2,23 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-project(GnssHat VERSION 1.0.0)
+project(gnsshat VERSION 1.2.0)
+
+# Absolute paths to this project, so they stay correct when gnsshat is pulled
+# into another build with add_subdirectory or FetchContent -- CMAKE_SOURCE_DIR
+# points at the outer project in that case. Subdirectories inherit these, and
+# some of them call project() themselves, which rules out PROJECT_SOURCE_DIR.
+set(GNSSHAT_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(GNSSHAT_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
+
+# Installing headers, exporting a CMake package, writing a pkg-config file and
+# running ldconfig are things only a standalone build should do.
+if(CMAKE_SOURCE_DIR STREQUAL GNSSHAT_ROOT_DIR)
+    set(GNSSHAT_TOP_LEVEL TRUE)
+else()
+    set(GNSSHAT_TOP_LEVEL FALSE)
+    message(STATUS "gnsshat built as a subproject - install rules disabled")
+endif()
 
 option(BUILD_PYTHON "Build Python bindings" OFF)
 option(BUILD_EXAMPLES "Build C and C++ examples" OFF)
@@ -93,8 +109,8 @@ else()
 endif()
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/src/Version.hpp.in
-    ${CMAKE_SOURCE_DIR}/src/Version.hpp
+    ${GNSSHAT_ROOT_DIR}/src/Version.hpp.in
+    ${GNSSHAT_ROOT_DIR}/src/Version.hpp
     @ONLY
 )
 
@@ -113,8 +129,8 @@ set(LIB_SOURCES
     src/ublox/ubxmsg/IUbxMsg.cpp
     src/ublox/ubxmsg/UBX_CFG_VALGET.cpp
     src/ublox/BaseConfig.cpp
-    src/ublox/Gnss.cpp
     src/ublox/GnssConfig.cpp
+    src/ublox/NavigationStore.cpp
     src/ublox/NmeaForwarder.cpp
     src/ublox/Rtcm3Parser.cpp
     src/ublox/Rtcm3Store.cpp
@@ -132,27 +148,27 @@ set(LIB_SOURCES
     src/GnssHat_C.cpp
 )
 
-add_library(GnssHat SHARED ${LIB_SOURCES})
+add_library(gnsshat SHARED ${LIB_SOURCES})
 
 # Installed headers live in <includedir>/jimmypaputto, and public sources include
 # them as <jimmypaputto/...>, so the exported include dir must be <includedir>.
-target_include_directories(GnssHat
+target_include_directories(gnsshat
     PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${GNSSHAT_ROOT_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 # Git info for BuildInfo
 execute_process(
     COMMAND git describe --always --dirty
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${GNSSHAT_ROOT_DIR}
     OUTPUT_VARIABLE GIT_REVISION
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
 )
 execute_process(
     COMMAND git rev-list --count HEAD
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WORKING_DIRECTORY ${GNSSHAT_ROOT_DIR}
     OUTPUT_VARIABLE GIT_BUILD_NUMBER
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET
@@ -169,22 +185,21 @@ set_source_files_properties(src/common/BuildInfo.cpp PROPERTIES
 
 # Force BuildInfo.cpp recompile on every build for fresh __DATE__/__TIME__
 add_custom_target(BuildInfoRefresh ALL
-    COMMAND ${CMAKE_COMMAND} -E touch_nocreate ${CMAKE_SOURCE_DIR}/src/common/BuildInfo.cpp
+    COMMAND ${CMAKE_COMMAND} -E touch_nocreate ${GNSSHAT_ROOT_DIR}/src/common/BuildInfo.cpp
 )
-add_dependencies(GnssHat BuildInfoRefresh)
+add_dependencies(gnsshat BuildInfoRefresh)
 
-set_target_properties(GnssHat PROPERTIES
+set_target_properties(gnsshat PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR}
-    OUTPUT_NAME gnsshat
 )
 
-target_link_libraries(GnssHat gpiod pthread util)
+target_link_libraries(gnsshat gpiod pthread util)
 
 if(NTRIP_TLS_SUPPORT)
     find_package(OpenSSL REQUIRED)
-    target_compile_definitions(GnssHat PUBLIC GNSSHAT_HAS_TLS)
-    target_link_libraries(GnssHat OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(gnsshat PUBLIC GNSSHAT_HAS_TLS)
+    target_link_libraries(gnsshat OpenSSL::SSL OpenSSL::Crypto)
     message(STATUS "NTRIP TLS support enabled")
 endif()
 
@@ -199,9 +214,9 @@ if(BUILD_TESTS)
 endif()
 
 if(BUILD_EXAMPLES)
-    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/include)
-    execute_process(COMMAND ln -snf ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/include/jimmypaputto)
-    target_include_directories(GnssHat PUBLIC $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
+    file(MAKE_DIRECTORY ${GNSSHAT_BUILD_DIR}/include)
+    execute_process(COMMAND ln -snf ${GNSSHAT_ROOT_DIR}/src ${GNSSHAT_BUILD_DIR}/include/jimmypaputto)
+    target_include_directories(gnsshat PUBLIC $<BUILD_INTERFACE:${GNSSHAT_BUILD_DIR}/include>)
 
     # C examples
     add_subdirectory(examples/c/geofencing)
@@ -226,7 +241,7 @@ if(BUILD_EXAMPLES)
     add_subdirectory(examples/cpp/timepulse-interrupt)
 
     # Create bin directory with symlinks to C++ example binaries
-    set(SYMLINK_DIR ${CMAKE_SOURCE_DIR}/examples/bin)
+    set(SYMLINK_DIR ${GNSSHAT_ROOT_DIR}/examples/bin)
     file(MAKE_DIRECTORY ${SYMLINK_DIR})
 
     set(CPP_TARGETS
@@ -284,8 +299,19 @@ if(BUILD_EXAMPLES)
     set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES ${SYMLINK_FILES})
 endif()
 
-install(TARGETS GnssHat
-    EXPORT GnssHatTargets
+# ── Installation ─────────────────────────────────────────────────────────────
+#
+# Everything below only makes sense for a standalone build. When gnsshat is
+# embedded in another project, installing its headers and CMake package into
+# that project's prefix, rewriting the pkg-config file, running ldconfig and
+# declaring an `uninstall` target are all wrong -- and the last one collides
+# outright with the `uninstall` target ament_cmake already defines.
+if(NOT GNSSHAT_TOP_LEVEL)
+    return()
+endif()
+
+install(TARGETS gnsshat
+    EXPORT gnsshatTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
@@ -345,46 +371,46 @@ install(
         ${CMAKE_INSTALL_INCLUDEDIR}/jimmypaputto/ntrip
 )
 
-# ── CMake package config (enables find_package(GnssHat)) ────────────────────
+# ── CMake package config (enables find_package(gnsshat)) ────────────────────
 
 include(CMakePackageConfigHelpers)
 
-install(EXPORT GnssHatTargets
-    FILE GnssHatTargets.cmake
-    NAMESPACE GnssHat::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+install(EXPORT gnsshatTargets
+    FILE gnsshatTargets.cmake
+    NAMESPACE gnsshat::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gnsshat
 )
 
 configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/GnssHatConfig.cmake.in
-    ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+    ${GNSSHAT_ROOT_DIR}/cmake/gnsshatConfig.cmake.in
+    ${GNSSHAT_BUILD_DIR}/gnsshatConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gnsshat
 )
 
 write_basic_package_version_file(
-    ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+    ${GNSSHAT_BUILD_DIR}/gnsshatConfigVersion.cmake
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
 
 install(
     FILES
-        ${CMAKE_BINARY_DIR}/GnssHatConfig.cmake
-        ${CMAKE_BINARY_DIR}/GnssHatConfigVersion.cmake
+        ${GNSSHAT_BUILD_DIR}/gnsshatConfig.cmake
+        ${GNSSHAT_BUILD_DIR}/gnsshatConfigVersion.cmake
     DESTINATION
-        ${CMAKE_INSTALL_LIBDIR}/cmake/GnssHat
+        ${CMAKE_INSTALL_LIBDIR}/cmake/gnsshat
 )
 
 # ── pkg-config ───────────────────────────────────────────────────────────────
 
 configure_file(
-    ${CMAKE_SOURCE_DIR}/cmake/gnsshat.pc.in
-    ${CMAKE_BINARY_DIR}/gnsshat.pc
+    ${GNSSHAT_ROOT_DIR}/cmake/gnsshat.pc.in
+    ${GNSSHAT_BUILD_DIR}/gnsshat.pc
     @ONLY
 )
 
 install(
-    FILES ${CMAKE_BINARY_DIR}/gnsshat.pc
+    FILES ${GNSSHAT_BUILD_DIR}/gnsshat.pc
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
 )
 
@@ -394,7 +420,7 @@ install(CODE "
     endif()
 ")
 
-file(WRITE ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake "
+file(WRITE ${GNSSHAT_BUILD_DIR}/cmake_uninstall.cmake "
     set(MANIFEST \"\${CMAKE_BINARY_DIR}/install_manifest.txt\")
     if(NOT EXISTS \${MANIFEST})
         message(FATAL_ERROR \"Cannot find install manifest: \${MANIFEST}\")
@@ -433,12 +459,12 @@ file(WRITE ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake "
         string(REPLACE \";\" \"\\n  \" FAILED_LIST \"\${FAILED_FILES}\")
         message(FATAL_ERROR \"Failed to remove the following files (try running with sudo):\\n  \${FAILED_LIST}\")
     endif()
-    message(STATUS \"GnssHat uninstalled.\")
+    message(STATUS \"gnsshat uninstalled.\")
 ")
 
 add_custom_target(uninstall
-    COMMAND ${CMAKE_COMMAND} -DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR} -P ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake
-    COMMENT "Uninstalling GnssHat"
+    COMMAND ${CMAKE_COMMAND} -DCMAKE_BINARY_DIR=${GNSSHAT_BUILD_DIR} -P ${GNSSHAT_BUILD_DIR}/cmake_uninstall.cmake
+    COMMENT "Uninstalling gnsshat"
 )
 
 if(BUILD_PYTHON)

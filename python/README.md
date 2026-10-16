@@ -140,7 +140,7 @@ with gnsshat.GnssHat() as hat:
 ## Module Functions and Constants
 
 ```python
-gnsshat.version()              # Returns '1.0.0'
+gnsshat.version()              # Returns '1.2.0'
 gnsshat.utc_time_iso8601(nav)  # Convert Navigation or PVT to ISO 8601 string
 
 gnsshat.MAX_GEOFENCES   # 4

@@ -4,7 +4,6 @@
 
 #include "UbxCallbacks.hpp"
 
-#include "ublox/Gnss.hpp"
 #include "ublox/Ublox.hpp"
 #include "common/Utils.hpp"
 #include "GnssHat.hpp"
@@ -28,7 +27,7 @@ namespace JimmyPaputto
 {
 
 UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
-    Notifier& timeMarkNotifier)
+    NavigationStore& navigationStore, Notifier& timeMarkNotifier)
 :	timeMarkNotifier_(timeMarkNotifier)
 {
     using enum EUbxMsg;
@@ -87,52 +86,53 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
             configRegistry.storeConfigValue(config.key, config.value);
     };
 
-    callbacks_[to_underlying(UBX_MON_RF)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_MON_RF)] = [&navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxMonRf = static_cast<ubxmsg::UBX_MON_RF&>(ubxMsg);
-        Gnss::instance().rfBlocks(ubxMonRf.rfBlocks());
+        navigationStore.rfBlocks(ubxMonRf.rfBlocks());
     };
 
-    callbacks_[to_underlying(UBX_MON_SPAN)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_MON_SPAN)] = [&navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxMonSpan = static_cast<ubxmsg::UBX_MON_SPAN&>(ubxMsg);
-        Gnss::instance().rfBlocksSpectrumData(ubxMonSpan.rfBlocksSpectrumData());
+        navigationStore.rfBlocksSpectrumData(ubxMonSpan.rfBlocksSpectrumData());
     };
 
-    callbacks_[to_underlying(UBX_MON_VER)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_MON_VER)] = [this, &navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxMonVer = static_cast<ubxmsg::UBX_MON_VER&>(ubxMsg);
-        Gnss::instance().monVer(ubxMonVer.swVersion(), ubxMonVer.hwVersion(),
-                                ubxMonVer.extensions());
+        navigationStore.monVer(ubxMonVer.swVersion(), ubxMonVer.hwVersion(),
+                               ubxMonVer.extensions());
+        monVerSeen_ = true;
     };
 
-    callbacks_[to_underlying(UBX_MON_SYS)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_MON_SYS)] = [&navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxMonSys = static_cast<ubxmsg::UBX_MON_SYS&>(ubxMsg);
-        Gnss::instance().systemHealth(ubxMonSys.systemHealth());
+        navigationStore.systemHealth(ubxMonSys.systemHealth());
     };
 
-    callbacks_[to_underlying(UBX_NAV_DOP)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_NAV_DOP)] = [&navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxNavDop = static_cast<ubxmsg::UBX_NAV_DOP&>(ubxMsg);
-        Gnss::instance().dop(ubxNavDop.dop());
+        navigationStore.dop(ubxNavDop.dop());
     };
 
-    callbacks_[to_underlying(UBX_NAV_GEOFENCE)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_NAV_GEOFENCE)] = [&navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxNavGeofence =
             static_cast<ubxmsg::UBX_NAV_GEOFENCE&>(ubxMsg);
-        Gnss::instance().geofencingNav(ubxNavGeofence.nav());
+        navigationStore.geofencingNav(ubxNavGeofence.nav());
     };
 
-    callbacks_[to_underlying(UBX_NAV_PVT)] = [this](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_NAV_PVT)] = [this, &navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxNavPvt = static_cast<ubxmsg::UBX_NAV_PVT&>(ubxMsg);
-        Gnss::instance().pvt(ubxNavPvt.pvt());
+        navigationStore.pvt(ubxNavPvt.pvt());
         navigationEpochSeen_ = true;
     };
 
-    callbacks_[to_underlying(UBX_NAV_SAT)] = [](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_NAV_SAT)] = [&navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxNavSat = static_cast<ubxmsg::UBX_NAV_SAT&>(ubxMsg);
-        Gnss::instance().satellites(ubxNavSat.satellites());
+        navigationStore.satellites(ubxNavSat.satellites());
     };
 
-    callbacks_[to_underlying(UBX_TIM_TM2)] = [this](ubxmsg::IUbxMsg& ubxMsg) -> void {
+    callbacks_[to_underlying(UBX_TIM_TM2)] = [this, &navigationStore](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxTimTm2 = static_cast<ubxmsg::UBX_TIM_TM2&>(ubxMsg);
-        Gnss::instance().timeMark(ubxTimTm2.timeMark());
+        navigationStore.timeMark(ubxTimTm2.timeMark());
         timeMarkNotifier_.notify();
     };
 }
@@ -144,7 +144,7 @@ void UbxCallbacks::ackNakCb(ubxmsg::IUbxMsg& ubxMsg, EUbxMsg eUbxMsg,
     {
         const auto& ackMsg = static_cast<ubxmsg::UBX_ACK_ACK&>(ubxMsg);
         const auto eUbxMsgFromNakOrAck =
-            UbxClassMsgId::instance().translate(ackMsg.classMsgId());
+            UbxClassMsgId::translate(ackMsg.classMsgId());
         if (eUbxMsgFromNakOrAck != EUbxMsg::END_UBX)
         {
             configRegistry.ack(eUbxMsgFromNakOrAck);
@@ -154,7 +154,7 @@ void UbxCallbacks::ackNakCb(ubxmsg::IUbxMsg& ubxMsg, EUbxMsg eUbxMsg,
     {
         const auto& ackMsg = static_cast<ubxmsg::UBX_ACK_NAK&>(ubxMsg);
         const auto eUbxMsgFromNakOrAck =
-            UbxClassMsgId::instance().translate(ackMsg.classMsgId());
+            UbxClassMsgId::translate(ackMsg.classMsgId());
         if (eUbxMsgFromNakOrAck != EUbxMsg::END_UBX)
         {
             configRegistry.nak(eUbxMsgFromNakOrAck);

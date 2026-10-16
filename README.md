@@ -78,7 +78,7 @@ sudo make install
 | `BUILD_PYTHON` | OFF | Build and install the Python CPython extension module |
 | `BUILD_EXAMPLES` | OFF | Build all C and C++ examples. Binaries are symlinked into `examples/bin/` for convenience |
 | `BUILD_TOOLS` | OFF | Build CLI tools (`gnsshat-info`, `gnsshat-probe`, `gnsshat-rtk-base`). Requires toml11 |
-| `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest` |
+| `BUILD_TESTS` | OFF | Build unit tests (requires GTest). Run with `ctest`. Tests that need a real HAT are skipped unless `GNSSHAT_HW_TESTS=1` is set |
 
 All flags are optional.
 

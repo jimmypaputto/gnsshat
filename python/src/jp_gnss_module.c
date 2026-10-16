@@ -3989,7 +3989,7 @@ static PyTypeObject NavigationType = {
 
 static PyObject* jimmypaputto_gnss_version(PyObject* self, PyObject* args)
 {
-    return PyUnicode_FromString("1.0.0");
+    return PyUnicode_FromString(GNSS_HAT_VERSION);
 }
 
 static PyObject* utc_time_iso8601(PyObject* self, PyObject* args)

@@ -7,39 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-16
+
+### Added
+- gnsshat can be pulled into another CMake project with `add_subdirectory()`
+  or `FetchContent`. Paths no longer assume a top-level build, and the install,
+  CMake package, pkg-config, ldconfig and `uninstall` rules are skipped then
+
+### Changed
+- The CMake package is now `gnsshat` with the imported target
+  `gnsshat::gnsshat`, replacing `GnssHat` / `GnssHat::GnssHat`. Breaking for
+  CMake consumers only: the library file and the pkg-config name stay `gnsshat`
+- `BUILD_TOOLS` now defaults to OFF, because the quick-start build failed
+  without `toml11`. Enable the CLI tools with `-DBUILD_TOOLS=ON`
+
 ### Fixed
-- Navigation notifications no longer fire twice per epoch. `M9NRun::execute()`
-  notified once per SPI drain pass, but the module splits its 1 Hz output into
-  two bursts: the four NAV messages together, then MON-SYS/RF/SPAN roughly
-  800 ms later. The second pass carried no fresh navigation yet still woke every
-  consumer, so `waitAndGetFreshNavigation()` returned ~2 Hz and half the
-  snapshots paired a new PVT with the previous epoch's DOP/SAT. Both run
-  strategies now notify only after parsing a buffer that carried NAV-PVT, which
-  also removes the F10T-only callback notification path. Measured over 1200
-  epochs: 2398 drain passes, all four NAV messages in a single pass in every
-  epoch, 0 epochs split across passes
-- gpsd bridge no longer forwards empty NMEA forever after boot. The receiver
-  can come out of boot with the GNSS engine stopped while the config interface
-  (VALGET/VALSET/ACK) answers normally, so startup completed "successfully"
-  on a dead receiver; a later service restart healed it because its hot reset
-  finally reached a receiver that was awake. Startup now sends a controlled
-  GNSS start (`UBX-CFG-RST` 0x09) at its end - a no-op on a running engine,
-  revives a stopped one - and `softResetUbloxSom_HotStart()` waits 1 s for
-  the receiver to come back before returning
+- Navigation notifications fired twice per epoch, because every SPI drain pass
+  notified and the module sends its output in two bursts. They now fire only
+  after a buffer carrying NAV-PVT is parsed
+  ([#42](https://github.com/jimmypaputto/gnsshat/pull/42))
+- gpsd bridge forwarded empty NMEA after boot when the GNSS engine came up
+  stopped. Startup now ends with a controlled GNSS start (`UBX-CFG-RST` 0x09)
+  and the hot-start reset waits 1 s for the receiver
   ([#40](https://github.com/jimmypaputto/gnsshat/issues/40))
-- SPI receive loop no longer stalls and discards data. `M9NRun::execute()` ended
-  the drain on a latched TX-READY falling edge; an edge arriving while the
-  thread was parsing got overwritten and lost, after which the loop spun for a
-  full epoch (~590 kB of SPI traffic) and wrapped the 8 kB buffer ~72 times,
-  silently dropping it on every wrap. Over half the navigation epochs never
-  reached the parser while in that state. The loop now ends on the module's
-  0xFF idle padding and never discards buffered bytes
-- NMEA forwarding for gpsd no longer drifts against the module's navigation
-  epoch. The forwarding thread used a free-running `sleep_for(1000ms)` loop, so
-  its true period was 1 s plus the loop body; the sampling phase crept across
-  the 1 Hz boundary and every ~30 minutes a second was emitted twice while
-  another was skipped. gpsd then paired sentences with the wrong PPS edge and
-  chrony stepped by exactly -1 s ([#38](https://github.com/jimmypaputto/gnsshat/issues/38))
+- SPI receive loop could stall for a whole epoch and drop buffered data when a
+  TX-READY edge was missed during parsing. The drain now ends on the module's
+  0xFF idle padding instead of the edge, and resumes at the buffer limit
+  instead of discarding the buffer
+- NMEA forwarding for gpsd ran on a free-running 1 s timer and drifted against
+  the navigation epoch, causing a -1 s chrony step every ~30 minutes. The
+  forwarder now waits on the navigation notifier and emits one deduplicated
+  sentence set per epoch
+  ([#38](https://github.com/jimmypaputto/gnsshat/issues/38))
+- `find_package(gnsshat)` failed for TLS builds, because the exported target
+  links `OpenSSL::SSL` and `OpenSSL::Crypto`. The package config now calls
+  `find_dependency(OpenSSL)`
+- A new `IGnssHat` object inherited the previous object's data (geofences,
+  MON-VER firmware version, last position, time mark), because receiver data
+  lived in a process-wide singleton. Each `IGnssHat` now owns its own data,
+  so destroying the object and creating a new one starts clean
+  ([#44](https://github.com/jimmypaputto/gnsshat/pull/44))
+- The exported include directory was `<includedir>/jimmypaputto`, one level too
+  deep for `#include <jimmypaputto/GnssHat.hpp>`. The CMake target and
+  `gnsshat.pc` now export `<includedir>`
+  ([#33](https://github.com/jimmypaputto/gnsshat/issues/33))
+- gpsd could stay inactive after boot, because `jpgnss2gpsd-bridge.service`
+  reported itself started before the PTY existed. The unit now stays
+  activating until `/dev/jimmypaputto/gnss` is created
+  ([#33](https://github.com/jimmypaputto/gnsshat/issues/33))
+- gpsd bridge startup messages reached journald only when the process exited,
+  with misleading timestamps. The bridge now line-buffers stdout
+
+### Removed
+- `GenericSingleton`. Receiver data, decoded UBX messages and startup state
+  are now owned by each `IGnssHat` instance
+  ([#44](https://github.com/jimmypaputto/gnsshat/pull/44))
 
 ## [1.1.0] - 2026-05-06
 

@@ -4,4 +4,4 @@ project(TimeBase_C)
 
 add_executable(time_base src/time_base.c)
 set_target_properties(time_base PROPERTIES OUTPUT_NAME time-base)
-target_link_libraries(time_base GnssHat pthread)
+target_link_libraries(time_base gnsshat pthread)
