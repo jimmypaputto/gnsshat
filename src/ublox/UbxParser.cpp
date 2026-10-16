@@ -27,8 +27,7 @@ UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
     NavigationStore& navigationStore, Notifier& timeMarkNotifier)
 :   endFrameIt_(frames_.end()),
     configRegistry_(configRegistry),
-    ubxCallbacks_(configRegistry, navigationStore, timeMarkNotifier),
-    ubxFactory_(std::make_unique<UbxFactory>())
+    ubxCallbacks_(configRegistry, navigationStore, timeMarkNotifier)
 {
     constexpr uint16_t maxFrameSize = 1024;
     unfinishedFrameFromBuffer_.reserve(maxFrameSize);
@@ -37,8 +36,6 @@ UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
         frame.reserve(maxFrameSize);
     }
 }
-
-UbxParser::~UbxParser() = default;
 
 std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
 {
@@ -55,7 +52,7 @@ std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
         );
         if (eUbxMsg != EUbxMsg::END_UBX)
         {
-            ubxCallbacks_.run(ubxFactory_->create(eUbxMsg, frame), eUbxMsg);
+            ubxCallbacks_.run(ubxFactory_.create(eUbxMsg, frame), eUbxMsg);
         }
     }
     return unfinishedFrameFromBuffer_;

@@ -13,6 +13,7 @@
 #include "IUbloxConfigRegistry.hpp"
 #include "NavigationStore.hpp"
 #include "UbxCallbacks.hpp"
+#include "UbxFactory.hpp"
 #include "common/Notifier.hpp"
 #include "ubxmsg/IUbxMsg.hpp"
 
@@ -20,14 +21,11 @@
 namespace JimmyPaputto
 {
 
-class UbxFactory;
-
 class UbxParser final
 {
 public:
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
         NavigationStore& navigationStore, Notifier& timeMarkNotifier);
-    ~UbxParser();
 
     std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
 
@@ -58,7 +56,7 @@ private:
     std::vector<uint8_t> unfinishedFrameFromBuffer_;
     IUbloxConfigRegistry& configRegistry_;
     UbxCallbacks ubxCallbacks_;
-    std::unique_ptr<UbxFactory> ubxFactory_;
+    UbxFactory ubxFactory_;
 };
 
 }  // JimmyPaputto
