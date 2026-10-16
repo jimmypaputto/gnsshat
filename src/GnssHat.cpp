@@ -11,8 +11,8 @@
 #include <thread>
 #include <type_traits>
 
-#include "ublox/Gnss.hpp"
 #include "ublox/GnssConfig.hpp"
+#include "ublox/NavigationStore.hpp"
 #include "ublox/NmeaForwarder.hpp"
 #include "ublox/RtkFactory.hpp"
 #include "ublox/Run.hpp"
@@ -108,15 +108,15 @@ public:
     SystemHealth systemHealth() const override;
     std::string swVersion() const override
     {
-        return gnss_.swVersion();
+        return navigationStore_.swVersion();
     }
     std::string hwVersion() const override
     {
-        return gnss_.hwVersion();
+        return navigationStore_.hwVersion();
     }
     std::vector<std::string> monVerExtensions() const override
     {
-        return gnss_.monVerExtensions();
+        return navigationStore_.monVerExtensions();
     }
 
 protected:
@@ -124,12 +124,12 @@ protected:
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
 
     std::unique_ptr<ICommDriver> commDriver_;
+    NavigationStore navigationStore_;
     std::unique_ptr<IUbloxConfigRegistry> configRegistry_;
     std::unique_ptr<UbxParser> ubxParser_;
     std::unique_ptr<IRunStrategy> runStrategy_;
     std::unique_ptr<IStartupStrategy> startupStrategy_;
     std::unique_ptr<Ublox> ublox_;
-    Gnss& gnss_;
     std::unique_ptr<TxReadyInterrupt> txReady_;
     std::unique_ptr<Timepulse> timepulse_;
     std::unique_ptr<NmeaForwarder> nmeaForwarder_;
@@ -201,17 +201,17 @@ public:
 
     std::optional<TimeMark> timeMark() const override
     {
-        return gnss_.timeMark();
+        return navigationStore_.timeMark();
     }
     TimeMark waitAndGetFreshTimeMark() override
     {
         timeMarkNotifier_.wait(stopSource_.get_token());
-        return Gnss::instance().timeMark().value_or(TimeMark{});
+        return navigationStore_.timeMark().value_or(TimeMark{});
     }
 
     SystemHealth systemHealth() const override
     {
-        return gnss_.systemHealth();
+        return navigationStore_.systemHealth();
     }
 
     bool enableTimeMarkTrigger() override
@@ -301,7 +301,7 @@ public:
 
     SystemHealth systemHealth() const override
     {
-        return gnss_.systemHealth();
+        return navigationStore_.systemHealth();
     }
 
     std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store() override
@@ -362,7 +362,6 @@ GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
     ubxParser_(nullptr),
     startupStrategy_(nullptr),
     ublox_(nullptr),
-    gnss_(Gnss::instance()),
     txReady_(nullptr),
     timepulse_(nullptr),
     nmeaForwarder_(nullptr)
@@ -441,7 +440,7 @@ bool GnssHat::start(const GnssConfig& config)
     config_ = config;
     configRegistry_ = std::make_unique<UbloxConfigRegistry>(config_);
     ubxParser_ = std::make_unique<UbxParser>(
-        *configRegistry_, timeMarkNotifier_
+        *configRegistry_, navigationStore_, timeMarkNotifier_
     );
     startupStrategy_ = std::make_unique<StartupStrategy>(
         *commDriver_, *configRegistry_, *ubxParser_
@@ -471,18 +470,18 @@ bool GnssHat::start(const GnssConfig& config)
         return false;
     }
 
+    Geofencing::Cfg geofencingCfg{};
     if (config.geofencing.has_value())
     {
         const auto& geo = config.geofencing.value();
-        Geofencing::Cfg cfg{};
-        cfg.confidenceLevel = geo.confidenceLevel;
-        cfg.geofences = geo.geofences;
-        cfg.pioEnabled = geo.pioPinPolarity.has_value();
-        cfg.pinPolarity = geo.pioPinPolarity.value_or(
+        geofencingCfg.confidenceLevel = geo.confidenceLevel;
+        geofencingCfg.geofences = geo.geofences;
+        geofencingCfg.pioEnabled = geo.pioPinPolarity.has_value();
+        geofencingCfg.pinPolarity = geo.pioPinPolarity.value_or(
             EPioPinPolarity::LowMeansInside);
-        cfg.pioPinNumber = geofencingPioPin;
-        gnss_.geofencingCfg(cfg);
+        geofencingCfg.pioPinNumber = geofencingPioPin;
     }
+    navigationStore_.geofencingCfg(geofencingCfg);
 
     if constexpr (!std::is_same_v<RunStrategy, F10TRun>)
     {
@@ -505,29 +504,14 @@ bool GnssHat::start(const GnssConfig& config)
 Navigation GnssHat::waitAndGetFreshNavigation()
 {
     if (!navigationNotifier_.wait(stopSource_.get_token()))
-    {
-        Navigation empty;
-        return empty;
-    }
+        return Navigation();
 
-    Navigation navigation;
-    if (gnss_.lock())
-    {
-        navigation = gnss_.navigation();
-        gnss_.unlock();
-    }
-    return navigation;
+    return navigationStore_.navigation();
 }
 
 Navigation GnssHat::navigation() const
 {
-    Navigation navigation;
-    if (gnss_.lock())
-    {
-        navigation = gnss_.navigation();
-        gnss_.unlock();
-    }
-    return navigation;
+    return navigationStore_.navigation();
 }
 
 bool GnssHat::enableTimepulse()
@@ -650,7 +634,7 @@ bool GnssHat::startForwardForGpsd()
         return false;
     }
 
-    nmeaForwarder_->startForwarding(gnss_, navigationNotifier_);
+    nmeaForwarder_->startForwarding(navigationStore_, navigationNotifier_);
     return true;
 }
 

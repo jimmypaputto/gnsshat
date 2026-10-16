@@ -12,6 +12,7 @@
 
 #include "EUbxMsg.hpp"
 #include "IUbloxConfigRegistry.hpp"
+#include "NavigationStore.hpp"
 #include "ubxmsg/IUbxMsg.hpp"
 #include "common/Notifier.hpp"
 
@@ -23,13 +24,18 @@ class UbxCallbacks
 {
 public:
     explicit UbxCallbacks(IUbloxConfigRegistry& configRegistry,
-        Notifier& timeMarkNotifier);
+        NavigationStore& navigationStore, Notifier& timeMarkNotifier);
 
     void run(ubxmsg::IUbxMsg& ubxMsg, const EUbxMsg& eUbxMsg);
 
     bool consumeNavigationEpoch()
     {
         return std::exchange(navigationEpochSeen_, false);
+    }
+
+    bool consumeMonVer()
+    {
+        return std::exchange(monVerSeen_, false);
     }
 
 private:
@@ -39,6 +45,7 @@ private:
     std::array<std::function<void(ubxmsg::IUbxMsg&)>, numberOfUbxMsgs> callbacks_;
     Notifier& timeMarkNotifier_;
     bool navigationEpochSeen_ = false;
+    bool monVerSeen_ = false;
 };
 
 }  // JimmyPaputto
