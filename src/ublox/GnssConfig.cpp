@@ -128,6 +128,48 @@ bool checkTiming(const std::optional<TimingConfig>& timing)
     return true;
 }
 
+bool checkRtk(const std::optional<RtkConfig>& rtk)
+{
+    if (!rtk.has_value())
+    {
+        return true;
+    }
+
+    switch (rtk->mode)
+    {
+        case ERtkMode::Base:
+            if (!rtk->base.has_value())
+            {
+                fprintf(
+                    stderr,
+                    "[GnssConfig] RTK base mode requires a base config "
+                    "(survey-in or fixed position)\r\n"
+                );
+                return false;
+            }
+            return checkBaseConfig(rtk->base.value());
+
+        case ERtkMode::Rover:
+            if (rtk->base.has_value())
+            {
+                fprintf(
+                    stderr,
+                    "[GnssConfig] RTK rover mode does not take a base config "
+                    "- use nullopt instead\r\n"
+                );
+                return false;
+            }
+            return true;
+    }
+
+    fprintf(
+        stderr,
+        "[GnssConfig] Invalid RTK mode: %u, should be 0 (Base) or 1 (Rover)\r\n",
+        static_cast<unsigned>(rtk->mode)
+    );
+    return false;
+}
+
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig)
 {
     if (!timepulsePinConfig.active)
