@@ -128,15 +128,22 @@ config = {
 | `enable_time_mark_trigger()` | Enable EXTINT pin (GPIO 17) as output for software-triggered time marks. |
 | `disable_time_mark_trigger()` | Disable EXTINT trigger. |
 | `trigger_time_mark(edge)` | Trigger a time mark event. Optional `TimeMarkTriggerEdge` arg (default `TOGGLE`). |
+| `close()` | Stop gpsd forwarding, timepulse and time mark trigger and release the HAT. Threads blocked in `wait_and_get_fresh_*()` or `timepulse()` are woken with `RuntimeError`. Idempotent. |
+| `closed` | `True` once `close()` has been called. Any other method then raises `RuntimeError`. |
 
-Supports context manager:
+Supports context manager. Leaving the `with` block calls `close()`, like a file:
+the object cannot be reused afterwards, so create a new `GnssHat()` instead.
 
 ```python
 with gnsshat.GnssHat() as hat:
     hat.start(config)
     nav = hat.wait_and_get_fresh_navigation()
-# __exit__ automatically stops GPSD forwarding and disables timepulse
+# close() stopped GPSD forwarding, disabled timepulse and released the HAT
 ```
+
+`close()` may be called while other threads use the HAT: it wakes the ones
+blocked in `wait_and_get_fresh_*()` or `timepulse()` (they get `RuntimeError`)
+and waits for in-progress calls before releasing the handle.
 
 ## Module Functions and Constants
 

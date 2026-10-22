@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `jp_gnss_hat_shutdown()` wakes threads blocked in the C wait, timepulse and
   gpsd join calls and makes the waits return `false`, so worker loops end and
   can be joined before `jp_gnss_hat_destroy()`
+- Python `GnssHat.close()` and `GnssHat.closed`, so the HAT can be released
+  without a `with` block. Leaving a `with` block calls `close()`
 
 ### Changed
 - `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
@@ -26,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `jp_gnss_gnss_config_init()` enabled the timepulse while Python left it off
   and `TimepulsePinConfig::active` in C++ had no default. All three now keep
   the timepulse disabled unless it is explicitly activated
+- Python methods on a closed `GnssHat` now raise `RuntimeError("GnssHat is
+  closed")` instead of "GNSS HAT not initialized", and calling `__init__()` on
+  an initialized object raises instead of opening the HAT a second time
 
 ### Fixed
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
@@ -46,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `stopForwardForGpsd()` from another thread could race with
   `joinForwardForGpsd()` destroying the forwarder. The forwarder is now
   guarded by a mutex
+- Leaving a Python `with GnssHat()` block while another thread was blocked in
+  `wait_and_get_fresh_*()`, `timepulse()` or `join_forward_for_gpsd()` freed
+  the HAT under that thread. `close()` now wakes those threads with
+  `RuntimeError` and waits for running calls before releasing the HAT
 
 ## [1.2.0] - 2026-10-16
 

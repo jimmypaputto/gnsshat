@@ -82,9 +82,11 @@ def main():
         while running:
             time.sleep(0.1)
 
+        toggle.join()
         hat.disable_time_mark_trigger()
 
-    toggle.join()
+    # Leaving the with block closes the HAT, which wakes the reader blocked in
+    # wait_and_get_fresh_time_mark() with RuntimeError.
     tm_reader.join()
 
     print("Exiting...")

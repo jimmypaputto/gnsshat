@@ -5,6 +5,7 @@
 #include <Python.h>
 #include <structmember.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "GnssHat.h"
 
@@ -33,6 +34,9 @@ typedef struct
     PyObject_HEAD
     jp_gnss_hat_t* hat;
     PyObject* callback;
+    /* Calls running without the GIL; close() waits for them to finish. */
+    Py_ssize_t in_flight;
+    bool closed;
 } GnssHat;
 
 typedef struct
@@ -1734,24 +1738,60 @@ static PyObject* GnssHat_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
     {
         self->hat = NULL;
         self->callback = NULL;
+        self->in_flight = 0;
+        self->closed = false;
     }
     return (PyObject*)self;
 }
 
 static int GnssHat_init(GnssHat* self, PyObject* args, PyObject* kwds)
 {
+    if (self->hat || self->closed)
+    {
+        PyErr_SetString(PyExc_RuntimeError,
+            "GnssHat is already initialized");
+        return -1;
+    }
+
     /* Never NULL: an unknown or missing HAT terminates the process. */
     self->hat = jp_gnss_hat_create();
     return 0;
 }
 
+static void GnssHat_close_handle(GnssHat* self)
+{
+    jp_gnss_hat_t* hat = self->hat;
+    if (self->closed)
+        return;
+
+    self->closed = true;
+    if (!hat)
+        return;
+
+    /* Wake blocked calls first: destroying the handle while a thread is
+     * between its closed check and the C call would free it under that
+     * thread. */
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_hat_shutdown(hat);
+    Py_END_ALLOW_THREADS
+
+    while (self->in_flight > 0)
+    {
+        Py_BEGIN_ALLOW_THREADS
+        usleep(1000);
+        Py_END_ALLOW_THREADS
+    }
+
+    Py_BEGIN_ALLOW_THREADS
+    jp_gnss_hat_destroy(hat);
+    Py_END_ALLOW_THREADS
+
+    self->hat = NULL;
+}
+
 static void GnssHat_dealloc(GnssHat* self)
 {
-    if (self->hat)
-    {
-        jp_gnss_hat_destroy(self->hat);
-        self->hat = NULL;
-    }
+    GnssHat_close_handle(self);
     Py_XDECREF(self->callback);
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -2617,9 +2657,40 @@ static void populate_config_from_dict(PyObject* config_dict, jp_gnss_gnss_config
 
 }
 
+static bool hat_is_open(GnssHat* self)
+{
+    if (self->closed)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GnssHat is closed");
+        return false;
+    }
+    if (!self->hat)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized");
+        return false;
+    }
+    return true;
+}
+
 #define CHECK_HAT(self) do { \
-    if (!(self)->hat) { \
-        PyErr_SetString(PyExc_RuntimeError, "GNSS HAT not initialized"); \
+    if (!hat_is_open(self)) \
+        return NULL; \
+} while (0)
+
+/* Runs `call` without the GIL. Put CHECK_HAT right before it, with no Python
+ * code in between, so close() cannot destroy the handle under the call. */
+#define HAT_CALL_NOGIL(self, call) do { \
+    (self)->in_flight++; \
+    Py_BEGIN_ALLOW_THREADS \
+    call; \
+    Py_END_ALLOW_THREADS \
+    (self)->in_flight--; \
+} while (0)
+
+/* A blocking wait woken by close() must not hand back an empty result. */
+#define CHECK_NOT_CLOSED_AFTER_WAIT(self) do { \
+    if ((self)->closed) { \
+        PyErr_SetString(PyExc_RuntimeError, "GnssHat is closed"); \
         return NULL; \
     } \
 } while (0)
@@ -3111,9 +3182,8 @@ static PyObject* GnssHat_get_navigation(GnssHat* self, PyObject* args)
     jp_gnss_navigation_t nav;
     bool result;
 
-    Py_BEGIN_ALLOW_THREADS
-    result = jp_gnss_hat_get_navigation(self->hat, &nav);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        result = jp_gnss_hat_get_navigation(self->hat, &nav));
 
     if (!result)
     {
@@ -3130,9 +3200,8 @@ static PyObject* GnssHat_get_system_health(GnssHat* self, PyObject* args)
     jp_gnss_system_health_t sys;
     bool result;
 
-    Py_BEGIN_ALLOW_THREADS
-    result = jp_gnss_hat_get_system_health(self->hat, &sys);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        result = jp_gnss_hat_get_system_health(self->hat, &sys));
 
     if (!result)
     {
@@ -3168,9 +3237,8 @@ static PyObject* GnssHat_get_mon_ver(GnssHat* self, PyObject* args)
     jp_gnss_mon_ver_t mv;
     bool result;
 
-    Py_BEGIN_ALLOW_THREADS
-    result = jp_gnss_hat_get_mon_ver(self->hat, &mv);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        result = jp_gnss_hat_get_mon_ver(self->hat, &mv));
 
     if (!result)
     {
@@ -3205,9 +3273,9 @@ static PyObject* GnssHat_wait_and_get_fresh_navigation(GnssHat* self, PyObject* 
     jp_gnss_navigation_t nav;
     bool result;
 
-    Py_BEGIN_ALLOW_THREADS
-    result = jp_gnss_hat_wait_and_get_fresh_navigation(self->hat, &nav);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        result = jp_gnss_hat_wait_and_get_fresh_navigation(self->hat, &nav));
+    CHECK_NOT_CLOSED_AFTER_WAIT(self);
 
     if (!result)
     {
@@ -3262,9 +3330,7 @@ static PyObject* GnssHat_stop_forward_for_gpsd(GnssHat* self, PyObject* args)
 static PyObject* GnssHat_join_forward_for_gpsd(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
-    Py_BEGIN_ALLOW_THREADS
-    jp_gnss_hat_join_forward_for_gpsd(self->hat);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self, jp_gnss_hat_join_forward_for_gpsd(self->hat));
     Py_RETURN_NONE;
 }
 
@@ -3296,9 +3362,8 @@ static PyObject* GnssHat_timepulse(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
 
-    Py_BEGIN_ALLOW_THREADS
-    jp_gnss_hat_timepulse(self->hat);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self, jp_gnss_hat_timepulse(self->hat));
+    CHECK_NOT_CLOSED_AFTER_WAIT(self);
 
     Py_RETURN_NONE;
 }
@@ -3359,9 +3424,8 @@ static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
 
     jp_gnss_rtk_corrections_t* corrections;
 
-    Py_BEGIN_ALLOW_THREADS
-    corrections = jp_gnss_rtk_get_full_corrections(self->hat);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        corrections = jp_gnss_rtk_get_full_corrections(self->hat));
 
     return corrections_to_list(corrections);
 }
@@ -3373,9 +3437,8 @@ static PyObject* GnssHat_rtk_get_tiny_corrections(GnssHat* self,
 
     jp_gnss_rtk_corrections_t* corrections;
 
-    Py_BEGIN_ALLOW_THREADS
-    corrections = jp_gnss_rtk_get_tiny_corrections(self->hat);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        corrections = jp_gnss_rtk_get_tiny_corrections(self->hat));
 
     return corrections_to_list(corrections);
 }
@@ -3390,9 +3453,9 @@ static PyObject* GnssHat_rtk_get_rtcm3_frame(GnssHat* self, PyObject* args)
 
     jp_gnss_rtcm3_frame_t* frame;
 
-    Py_BEGIN_ALLOW_THREADS
-    frame = jp_gnss_rtk_get_rtcm3_frame(self->hat, (uint16_t)frame_id);
-    Py_END_ALLOW_THREADS
+    CHECK_HAT(self);
+    HAT_CALL_NOGIL(self,
+        frame = jp_gnss_rtk_get_rtcm3_frame(self->hat, (uint16_t)frame_id));
 
     if (!frame)
     {
@@ -3455,13 +3518,16 @@ static PyObject* GnssHat_rtk_apply_corrections(GnssHat* self, PyObject* args)
         frames[i].size = (uint32_t)PyBytes_Size(item);
     }
 
-    bool result;
+    if (!hat_is_open(self))
+    {
+        free(frames);
+        return NULL;
+    }
 
-    Py_BEGIN_ALLOW_THREADS
-    result = jp_gnss_rtk_apply_corrections(
-        self->hat, frames, (uint32_t)count
-    );
-    Py_END_ALLOW_THREADS
+    bool result;
+    HAT_CALL_NOGIL(self,
+        result = jp_gnss_rtk_apply_corrections(
+            self->hat, frames, (uint32_t)count));
 
     free(frames);
 
@@ -3494,9 +3560,9 @@ static PyObject* GnssHat_wait_and_get_fresh_time_mark(GnssHat* self,
     jp_gnss_time_mark_t tm;
     bool result;
 
-    Py_BEGIN_ALLOW_THREADS
-    result = jp_gnss_hat_wait_and_get_fresh_time_mark(self->hat, &tm);
-    Py_END_ALLOW_THREADS
+    HAT_CALL_NOGIL(self,
+        result = jp_gnss_hat_wait_and_get_fresh_time_mark(self->hat, &tm));
+    CHECK_NOT_CLOSED_AFTER_WAIT(self);
 
     if (!result)
     {
@@ -3543,22 +3609,33 @@ static PyObject* GnssHat_trigger_time_mark(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject* GnssHat_close(GnssHat* self, PyObject* args)
+{
+    GnssHat_close_handle(self);
+    Py_RETURN_NONE;
+}
+
+static PyObject* GnssHat_get_closed(GnssHat* self, void* closure)
+{
+    return PyBool_FromLong(self->closed);
+}
+
+static PyGetSetDef GnssHat_getset[] = {
+    {"closed", (getter)GnssHat_get_closed, NULL,
+        "True once close() has been called", NULL},
+    {NULL}
+};
+
 static PyObject* GnssHat_enter(GnssHat* self, PyObject* args)
 {
+    CHECK_HAT(self);
     Py_INCREF(self);
     return (PyObject*)self;
 }
 
 static PyObject* GnssHat_exit(GnssHat* self, PyObject* args)
 {
-    if (self->hat)
-    {
-        jp_gnss_hat_stop_forward_for_gpsd(self->hat);
-        jp_gnss_hat_disable_timepulse(self->hat);
-        jp_gnss_hat_disable_time_mark_trigger(self->hat);
-        jp_gnss_hat_destroy(self->hat);
-        self->hat = NULL;
-    }
+    GnssHat_close_handle(self);
     Py_RETURN_NONE;
 }
 
@@ -3722,6 +3799,14 @@ static PyMethodDef GnssHat_methods[] = {
         "(TimeMarkTriggerEdge, default TOGGLE)."
     },
     {
+        "close",
+        (PyCFunction)GnssHat_close,
+        METH_NOARGS,
+        "Stop gpsd forwarding, timepulse and time mark trigger and release "
+        "the HAT. Threads blocked in wait_and_get_fresh_*() or timepulse() "
+        "are woken with RuntimeError. Safe to call more than once."
+    },
+    {
         "__enter__",
         (PyCFunction)GnssHat_enter,
         METH_NOARGS,
@@ -3731,7 +3816,7 @@ static PyMethodDef GnssHat_methods[] = {
         "__exit__",
         (PyCFunction)GnssHat_exit,
         METH_VARARGS,
-        "Context manager exit"
+        "Context manager exit, same as close()"
     },
     {NULL}
 };
@@ -3747,6 +3832,7 @@ static PyTypeObject GnssHatType = {
     .tp_init = (initproc)GnssHat_init,
     .tp_dealloc = (destructor)GnssHat_dealloc,
     .tp_methods = GnssHat_methods,
+    .tp_getset = GnssHat_getset,
 };
 
 static PyObject* Navigation_new(PyTypeObject* type, PyObject* args,
