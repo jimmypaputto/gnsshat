@@ -3272,7 +3272,7 @@ static PyObject* GnssHat_get_gpsd_device_path(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
     const char* path = jp_gnss_hat_get_gpsd_device_path(self->hat);
-    if (!path)
+    if (!path || !*path)
         Py_RETURN_NONE;
 
     return PyUnicode_FromString(path);
@@ -3631,7 +3631,8 @@ static PyMethodDef GnssHat_methods[] = {
         "get_gpsd_device_path",
         (PyCFunction)GnssHat_get_gpsd_device_path,
         METH_NOARGS,
-        "Get virtual device path for GPSD"
+        "Get virtual device path for GPSD, or None if forwarding is not "
+        "active"
     },
     {
         "hard_reset_cold_start",

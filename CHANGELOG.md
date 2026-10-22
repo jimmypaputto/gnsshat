@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   not find `<jimmypaputto/...>` headers, or silently took them from a
   system-wide install, unless `BUILD_EXAMPLES` was on. The build tree now
   always provides the installed `include/jimmypaputto` layout
+- Python `get_gpsd_device_path()` returned `''` instead of the documented
+  `None` when gpsd forwarding was not running, because the C wrapper passes an
+  empty string. The empty path is now mapped to `None`
 
 ## [1.2.0] - 2026-10-16
 

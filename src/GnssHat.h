@@ -567,6 +567,7 @@ void jp_gnss_hat_disable_timepulse(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start_forward_for_gpsd(jp_gnss_hat_t* hat);
 void jp_gnss_hat_stop_forward_for_gpsd(jp_gnss_hat_t* hat);
 void jp_gnss_hat_join_forward_for_gpsd(jp_gnss_hat_t* hat);
+/* Empty string while gpsd forwarding is not running. */
 const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat);
 void jp_gnss_hat_hard_reset_cold_start(jp_gnss_hat_t* hat);
 void jp_gnss_hat_soft_reset_hot_start(jp_gnss_hat_t* hat);
