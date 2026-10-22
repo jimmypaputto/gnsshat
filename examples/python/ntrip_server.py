@@ -81,6 +81,8 @@ def main():
         server.set_log_level(2)  # Info
         server.set_auto_reconnect(True, 1000, 30000)
 
+        # With auto-reconnect enabled, connect() only raises on setup errors;
+        # a caster that is down at startup is retried in the background.
         try:
             server.connect()
         except RuntimeError as error:
@@ -88,7 +90,7 @@ def main():
                   file=sys.stderr)
             return 1
 
-        print(f'Connected to {args.caster_host}:{args.caster_port}'
+        print(f'Pushing corrections to {args.caster_host}:{args.caster_port}'
               f'/{args.mountpoint}')
 
         # ── Main loop: forward corrections ──────────────────────────────
