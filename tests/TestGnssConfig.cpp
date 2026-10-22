@@ -116,6 +116,12 @@ TEST(GeofencingValidation, BoundaryCoordinates)
     EXPECT_TRUE(checkGeofencing(gf));
 }
 
+TEST(TimepulseValidation, InactiveByDefault)
+{
+    GnssConfig config;
+    EXPECT_FALSE(config.timepulsePinConfig.active);
+}
+
 TEST(TimepulseValidation, InactiveIsAlwaysValid)
 {
     TimepulsePinConfig cfg {

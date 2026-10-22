@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Python `start()` raised `RuntimeError` instead of returning `False` when the
   library rejected the config or startup failed, unlike the C/C++ API. It now
   returns `False`; malformed config dicts still raise `TypeError` / `ValueError`
+- `jp_gnss_gnss_config_init()` enabled the timepulse while Python left it off
+  and `TimepulsePinConfig::active` in C++ had no default. All three now keep
+  the timepulse disabled unless it is explicitly activated
 
 ### Fixed
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`

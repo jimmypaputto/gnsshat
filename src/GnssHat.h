@@ -581,6 +581,9 @@ void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat);
 void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_trigger_edge_t edge);
 
+/* 1 Hz, portable model, everything optional off. Timepulse stays disabled
+ * until timepulse_pin_config.active is set; it then defaults to 1 Hz,
+ * 0.1 pulse width, rising edge. */
 void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config);
 bool jp_gnss_gnss_config_add_geofence(jp_gnss_gnss_config_t* config,
     jp_gnss_geofence_t geofence);

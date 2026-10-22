@@ -938,7 +938,7 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
 
     config->measurement_rate_hz = 1;
     config->dynamic_model = JP_GNSS_DYNAMIC_MODEL_PORTABLE;
-    config->timepulse_pin_config.active = true;
+    config->timepulse_pin_config.active = false;
     config->timepulse_pin_config.fixed_pulse.frequency = 1;
     config->timepulse_pin_config.fixed_pulse.pulse_width = 0.1f;
     config->timepulse_pin_config.has_pulse_when_no_fix = false;

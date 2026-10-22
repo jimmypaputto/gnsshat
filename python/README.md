@@ -46,12 +46,13 @@ Installs to `~/.local/lib/pythonX.Y/site-packages/jimmypaputto/`.
 
 ## Configuration
 
-The `start()` method accepts a Python dict. All fields except `measurement_rate_hz`, `dynamic_model`, and `timepulse_pin_config` are optional.
+The `start()` method accepts a Python dict. All fields except `measurement_rate_hz` and `dynamic_model` are optional. Timepulse stays disabled unless `timepulse_pin_config` is given with `'active': True`.
 
 ```python
 config = {
     'measurement_rate_hz': 10,                    # 1-25 Hz
     'dynamic_model': gnsshat.DynamicModel.AUTOMOTIVE,
+    # Timepulse — None or omit to disable
     'timepulse_pin_config': {
         'active': True,
         'fixed_pulse': {'frequency': 1, 'pulse_width': 0.1},

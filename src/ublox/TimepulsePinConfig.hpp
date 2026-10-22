@@ -20,7 +20,7 @@ enum class ETimepulsePinPolarity : uint8_t
 
 struct TimepulsePinConfig
 {
-    bool active;
+    bool active{false};
 
     struct Pulse
     {
