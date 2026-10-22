@@ -55,6 +55,7 @@ private:
     int masterFd_;
     int slaveFd_;
     std::string devicePath_;
+    std::string ptyPath_;
     std::jthread forwardingThread_;
 
     std::string lastEpoch_;

@@ -550,6 +550,14 @@ typedef struct jp_gnss_hat jp_gnss_hat_t;
 
 /* Never returns NULL: an unknown or missing HAT terminates the process. */
 jp_gnss_hat_t* jp_gnss_hat_create(void);
+/* Final step before jp_gnss_hat_destroy(): wakes threads blocked in
+ * jp_gnss_hat_wait_and_get_fresh_* (they return false), jp_gnss_hat_timepulse
+ * and jp_gnss_hat_join_forward_for_gpsd, and stops gpsd forwarding. Later
+ * waits return at once, so worker loops on the wait functions end and can be
+ * joined before the handle is destroyed. */
+void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat);
+/* Wakes blocked calls and waits for them to return before freeing the handle.
+ * No thread may start a new call once destruction has begun. */
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start(jp_gnss_hat_t* hat,

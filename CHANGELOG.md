@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `jp_gnss_hat_shutdown()` wakes threads blocked in the C wait, timepulse and
+  gpsd join calls and makes the waits return `false`, so worker loops end and
+  can be joined before `jp_gnss_hat_destroy()`
+
 ### Changed
 - `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
   `rtk.base` is set, because the base config was silently ignored. Leave
@@ -34,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Python `get_gpsd_device_path()` returned `''` instead of the documented
   `None` when gpsd forwarding was not running, because the C wrapper passes an
   empty string. The empty path is now mapped to `None`
+- Deleting a HAT (`delete`, `jp_gnss_hat_destroy()`) while another thread was
+  blocked in `waitAndGetFresh*()`, `timepulse()` or `joinForwardForGpsd()`
+  destroyed the object under that thread, and `timepulse()` could not be woken
+  at all. Deletion now wakes these calls and waits for them to return
+- `stopForwardForGpsd()` from another thread could race with
+  `joinForwardForGpsd()` destroying the forwarder. The forwarder is now
+  guarded by a mutex
 
 ## [1.2.0] - 2026-10-16
 

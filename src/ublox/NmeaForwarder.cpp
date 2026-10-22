@@ -181,6 +181,7 @@ bool NmeaForwarder::createVirtualTty()
         return false;
     }
 
+    ptyPath_ = slaveName;
     chmod(slaveName, 0666);
     chmod(devicePath_.c_str(), 0666);
 
@@ -222,7 +223,15 @@ void NmeaForwarder::stopForwarding()
 {
     forwardingThread_.request_stop();
 
-    if (!devicePath_.empty())
+    if (devicePath_.empty())
+        return;
+
+    // Every forwarder uses the same device path; leave it alone once a newer
+    // forwarder has pointed it at its own pty.
+    char target[256];
+    const ssize_t length =
+        readlink(devicePath_.c_str(), target, sizeof(target) - 1);
+    if (length > 0 && ptyPath_ == std::string(target, length))
         unlink(devicePath_.c_str());
 }
 

@@ -19,6 +19,7 @@ add_executable(GnssHatTests
     TestNtrip.cpp
     TestHatLifecycle.cpp
     TestCApi.cpp
+    TestNmeaForwarder.cpp
 )
 set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 

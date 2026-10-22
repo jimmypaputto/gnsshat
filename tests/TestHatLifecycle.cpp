@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <memory>
+#include <thread>
 
 #include "GnssHat.hpp"
 
@@ -77,4 +80,45 @@ TEST(HatLifecycle, NewInstanceStartsClean)
     EXPECT_TRUE(hat->monVerExtensions().empty());
     EXPECT_TRUE(hat->navigation().geofencing.cfg.geofences.empty())
         << "geofences leaked from the previous instance";
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, DeleteWakesBlockedThreads)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    IGnssHat* hat = IGnssHat::create();
+    // gpsd forwarding needs root for /dev/jimmypaputto; without it only the
+    // navigation wait is covered.
+    const bool forwarding = hat->startForwardForGpsd();
+
+    // The receiver is not started, so no epoch arrives and both calls block
+    // until the HAT is deleted. The threads must not touch it afterwards.
+    std::atomic<int> woken{0};
+    std::thread navigationWaiter([hat, &woken] {
+        hat->waitAndGetFreshNavigation();
+        ++woken;
+    });
+    std::thread gpsdJoiner;
+    if (forwarding)
+    {
+        gpsdJoiner = std::thread([hat, &woken] {
+            hat->joinForwardForGpsd();
+            ++woken;
+        });
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_EQ(woken.load(), 0);
+
+    delete hat;
+    navigationWaiter.join();
+    if (gpsdJoiner.joinable())
+        gpsdJoiner.join();
+
+    EXPECT_EQ(woken.load(), forwarding ? 2 : 1);
 }

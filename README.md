@@ -222,7 +222,7 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 | Method | Description |
 |--------|-------------|
-| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation |
+| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation; terminates the process on an unknown HAT (check `Hat::detectProduct()` first) |
 | `start(config)` | Configure the u-blox module and start data acquisition |
 | `name()` | HAT name (e.g. `"L1 GNSS HAT"`) |
 | `waitAndGetFreshNavigation()` | Block until new data arrives, return `Navigation` |
@@ -238,7 +238,9 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
 | `joinForwardForGpsd()` | Block until forwarder thread finishes |
-| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config) |
+| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
+
+Deleting an `IGnssHat` wakes threads blocked in `waitAndGetFresh*()`, `timepulse()` or `joinForwardForGpsd()` and waits until they return (the waits with empty data). Stop worker loops before `delete` so they do not call into the instance again, and join them afterwards.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 

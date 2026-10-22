@@ -65,6 +65,10 @@ public:
     // Use Hat::detectProduct() first to fail gracefully.
     static IGnssHat* create();
 
+    // Deleting wakes threads blocked in waitAndGetFresh*(), timepulse() or
+    // joinForwardForGpsd() and waits until they return (the waits with
+    // default-constructed data). No thread may start a new call once deletion
+    // has begun, so stop worker loops first and join them afterwards.
     virtual ~IGnssHat() = default;
 };
 

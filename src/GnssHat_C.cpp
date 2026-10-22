@@ -4,6 +4,7 @@
 
 #include "GnssHat.h"
 #include "GnssHat.hpp"
+#include "GnssHatInternal.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -630,6 +631,14 @@ jp_gnss_hat_t* jp_gnss_hat_create()
     return wrapper;
 }
 
+void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return;
+
+    Internal::shutdown(*hat->instance);
+}
+
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat)
 {
     if (!hat)
@@ -668,8 +677,11 @@ bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     if (!hat->instance)
         return false;
 
-    *navigation =
-        convert_navigation(hat->instance->waitAndGetFreshNavigation());
+    const auto fresh = Internal::waitForNavigation(*hat->instance);
+    if (!fresh)
+        return false;
+
+    *navigation = convert_navigation(*fresh);
     return true;
 }
 
@@ -1170,8 +1182,11 @@ bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
     if (!hat || !time_mark || !hat->instance)
         return false;
 
-    *time_mark = convert_time_mark(
-        hat->instance->waitAndGetFreshTimeMark());
+    const auto fresh = Internal::waitForTimeMark(*hat->instance);
+    if (!fresh)
+        return false;
+
+    *time_mark = convert_time_mark(*fresh);
     return true;
 }
 
