@@ -118,8 +118,8 @@ config = {
 | `stop_forward_for_gpsd()` | Stop NMEA forwarding. |
 | `join_forward_for_gpsd()` | Block until forwarding thread exits. Releases GIL. |
 | `get_gpsd_device_path()` | Get the virtual TTY path (e.g. `/dev/pts/3`). Returns `None` if not active. |
-| `rtk_get_full_corrections()` | Get full RTCM3 correction frames from RTK base. Returns `list[bytes]`. |
-| `rtk_get_tiny_corrections()` | Get compact RTCM3 correction frames from RTK base. Returns `list[bytes]`. |
+| `rtk_get_full_corrections()` | Get full RTCM3 correction frames from RTK base. Returns `list[bytes]`, empty until the base has data. Raises `RuntimeError` if the HAT is not an RTK base. |
+| `rtk_get_tiny_corrections()` | Get compact RTCM3 correction frames from RTK base. Returns `list[bytes]`, empty until the base has data. Raises `RuntimeError` if the HAT is not an RTK base. |
 | `rtk_get_rtcm3_frame(msg_id)` | Get a specific RTCM3 frame by message ID. Returns `bytes`. |
 | `rtk_apply_corrections(frames)` | Send RTCM3 correction frames to RTK rover. Takes `list[bytes]`. |
 | `get_time_mark()` | Get current time mark data (non-blocking). Returns `TimeMark` or `None`. |

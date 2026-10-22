@@ -18,6 +18,7 @@ add_executable(GnssHatTests
     TestUbxClassMsgId.cpp
     TestNtrip.cpp
     TestHatLifecycle.cpp
+    TestCApi.cpp
 )
 set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
   `rtk.base` is set, because the base config was silently ignored. Leave
   `rtk.base` unset for a rover
+- `rtk_get_full_corrections()` / `rtk_get_tiny_corrections()` in Python
+  raised `RuntimeError` while the base had no data yet, and the C functions
+  returned `NULL` for that case too. They now return `[]` / `count == 0`, and
+  fail only when the HAT is not an RTK base
 
 ### Fixed
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`

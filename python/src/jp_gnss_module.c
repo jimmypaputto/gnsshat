@@ -3321,21 +3321,12 @@ static PyObject* GnssHat_name(GnssHat* self, PyObject* args)
     return PyUnicode_FromString(name);
 }
 
-static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
-    PyObject* args)
+static PyObject* corrections_to_list(jp_gnss_rtk_corrections_t* corrections)
 {
-    CHECK_HAT(self);
-
-    jp_gnss_rtk_corrections_t* corrections;
-
-    Py_BEGIN_ALLOW_THREADS
-    corrections = jp_gnss_rtk_get_full_corrections(self->hat);
-    Py_END_ALLOW_THREADS
-
     if (!corrections)
     {
         PyErr_SetString(PyExc_RuntimeError,
-            "Failed to get RTK corrections (RTK not available or no data)");
+            "RTK corrections not available (HAT is not an RTK base)");
         return NULL;
     }
 
@@ -3358,11 +3349,25 @@ static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
             jp_gnss_rtk_corrections_free(corrections);
             return NULL;
         }
-        PyList_SetItem(list, i, frame_bytes);
+        PyList_SET_ITEM(list, i, frame_bytes);
     }
 
     jp_gnss_rtk_corrections_free(corrections);
     return list;
+}
+
+static PyObject* GnssHat_rtk_get_full_corrections(GnssHat* self,
+    PyObject* args)
+{
+    CHECK_HAT(self);
+
+    jp_gnss_rtk_corrections_t* corrections;
+
+    Py_BEGIN_ALLOW_THREADS
+    corrections = jp_gnss_rtk_get_full_corrections(self->hat);
+    Py_END_ALLOW_THREADS
+
+    return corrections_to_list(corrections);
 }
 
 static PyObject* GnssHat_rtk_get_tiny_corrections(GnssHat* self,
@@ -3376,37 +3381,7 @@ static PyObject* GnssHat_rtk_get_tiny_corrections(GnssHat* self,
     corrections = jp_gnss_rtk_get_tiny_corrections(self->hat);
     Py_END_ALLOW_THREADS
 
-    if (!corrections)
-    {
-        PyErr_SetString(PyExc_RuntimeError,
-            "Failed to get RTK corrections (RTK not available or no data)");
-        return NULL;
-    }
-
-    PyObject* list = PyList_New(corrections->count);
-    if (!list)
-    {
-        jp_gnss_rtk_corrections_free(corrections);
-        return NULL;
-    }
-
-    for (uint32_t i = 0; i < corrections->count; i++)
-    {
-        PyObject* frame_bytes = PyBytes_FromStringAndSize(
-            (const char*)corrections->frames[i].data,
-            corrections->frames[i].size
-        );
-        if (!frame_bytes)
-        {
-            Py_DECREF(list);
-            jp_gnss_rtk_corrections_free(corrections);
-            return NULL;
-        }
-        PyList_SetItem(list, i, frame_bytes);
-    }
-
-    jp_gnss_rtk_corrections_free(corrections);
-    return list;
+    return corrections_to_list(corrections);
 }
 
 static PyObject* GnssHat_rtk_get_rtcm3_frame(GnssHat* self, PyObject* args)
@@ -3691,14 +3666,16 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_rtk_get_full_corrections,
         METH_NOARGS,
         "Get full RTK base corrections (M7M). "
-        "Returns a list of bytes objects (RTCM3 frames)."
+        "Returns a list of bytes objects (RTCM3 frames), empty until the "
+        "base has data. Raises RuntimeError if the HAT is not an RTK base."
     },
     {
         "rtk_get_tiny_corrections",
         (PyCFunction)GnssHat_rtk_get_tiny_corrections,
         METH_NOARGS,
         "Get tiny RTK base corrections (M4M). "
-        "Returns a list of bytes objects (RTCM3 frames)."
+        "Returns a list of bytes objects (RTCM3 frames), empty until the "
+        "base has data. Raises RuntimeError if the HAT is not an RTK base."
     },
     {
         "rtk_get_rtcm3_frame",

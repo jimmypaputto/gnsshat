@@ -221,7 +221,7 @@ int main(int argc, char* argv[])
 
             jp_gnss_rtk_corrections_t* corrections =
                 jp_gnss_rtk_get_full_corrections(gnss);
-            if (corrections)
+            if (corrections && corrections->count > 0)
             {
                 for (uint32_t i = 0; i < corrections->count; ++i)
                 {
@@ -240,9 +240,8 @@ int main(int argc, char* argv[])
                 if (clients > 0)
                     printf("[%s] Broadcasting to %u client(s)\r\n",
                         time_str, clients);
-
-                jp_gnss_rtk_corrections_free(corrections);
             }
+            jp_gnss_rtk_corrections_free(corrections);
         }
     }
 

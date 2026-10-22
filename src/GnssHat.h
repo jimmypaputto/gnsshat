@@ -585,6 +585,9 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config);
 bool jp_gnss_gnss_config_add_geofence(jp_gnss_gnss_config_t* config,
     jp_gnss_geofence_t geofence);
 
+/* NULL when the HAT is not an RTK base (no RTK or rover mode); count is 0
+ * while the base has no corrections yet. Free with
+ * jp_gnss_rtk_corrections_free(). */
 jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     jp_gnss_hat_t* hat);
 jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(

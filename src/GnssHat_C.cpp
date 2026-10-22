@@ -974,8 +974,7 @@ const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
     return hat->instance->name().data();
 }
 
-jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
-    jp_gnss_hat_t* hat)
+static IBase* rtkBase(jp_gnss_hat_t* hat)
 {
     if (!hat || !hat->instance)
         return nullptr;
@@ -984,19 +983,21 @@ jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     if (!rtk)
         return nullptr;
 
-    IBase* base = rtk->base();
-    if (!base)
-        return nullptr;
+    return rtk->base();
+}
 
-    auto cpp_corrections = base->getFullCorrections();
-    if (cpp_corrections.empty())
-        return nullptr;
-
+static jp_gnss_rtk_corrections_t* toCCorrections(
+    const std::vector<std::vector<uint8_t>>& cpp_corrections)
+{
     auto* result = new (std::nothrow) jp_gnss_rtk_corrections_t;
     if (!result)
         return nullptr;
 
     result->count = static_cast<uint32_t>(cpp_corrections.size());
+    result->frames = nullptr;
+    if (result->count == 0)
+        return result;
+
     result->frames =
         new (std::nothrow) jp_gnss_rtcm3_frame_t[result->count];
     if (!result->frames)
@@ -1026,56 +1027,24 @@ jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     return result;
 }
 
-jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     jp_gnss_hat_t* hat)
 {
-    if (!hat || !hat->instance)
-        return nullptr;
-
-    IRtk* rtk = hat->instance->rtk();
-    if (!rtk)
-        return nullptr;
-
-    IBase* base = rtk->base();
+    IBase* base = rtkBase(hat);
     if (!base)
         return nullptr;
 
-    auto cpp_corrections = base->getTinyCorrections();
-    if (cpp_corrections.empty())
+    return toCCorrections(base->getFullCorrections());
+}
+
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(
+    jp_gnss_hat_t* hat)
+{
+    IBase* base = rtkBase(hat);
+    if (!base)
         return nullptr;
 
-    auto* result = new (std::nothrow) jp_gnss_rtk_corrections_t;
-    if (!result)
-        return nullptr;
-
-    result->count = static_cast<uint32_t>(cpp_corrections.size());
-    result->frames =
-        new (std::nothrow) jp_gnss_rtcm3_frame_t[result->count];
-    if (!result->frames)
-    {
-        delete result;
-        return nullptr;
-    }
-
-    for (uint32_t i = 0; i < result->count; ++i)
-    {
-        result->frames[i].size =
-            static_cast<uint32_t>(cpp_corrections[i].size());
-        result->frames[i].data =
-            new (std::nothrow) uint8_t[result->frames[i].size];
-        if (!result->frames[i].data)
-        {
-            for (uint32_t j = 0; j < i; ++j)
-                delete[] result->frames[j].data;
-            delete[] result->frames;
-            delete result;
-            return nullptr;
-        }
-        std::memcpy(result->frames[i].data, cpp_corrections[i].data(),
-            result->frames[i].size);
-    }
-
-    return result;
+    return toCCorrections(base->getTinyCorrections());
 }
 
 jp_gnss_rtcm3_frame_t* jp_gnss_rtk_get_rtcm3_frame(jp_gnss_hat_t* hat,

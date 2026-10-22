@@ -161,21 +161,21 @@ def main():
                       f"waiting for TIME_ONLY_FIX for RTK Base")
             else:
                 print("\nRTK Base ready with TIME_ONLY_FIX")
-                try:
-                    corrections = hat.rtk_get_full_corrections()
-                    for frame in corrections:
-                        print_rtcm3_frame(frame, str(nav.pvt.utc_time))
+                corrections = hat.rtk_get_full_corrections()
+                if not corrections:
+                    print("RTK corrections not available yet")
+                    continue
 
-                    caster.feed(corrections)
-                    caster.update_position(
-                        nav.pvt.latitude, nav.pvt.longitude)
+                for frame in corrections:
+                    print_rtcm3_frame(frame, str(nav.pvt.utc_time))
 
-                    clients = caster.client_count()
-                    if clients > 0:
-                        print(f"Broadcasting to {clients} client(s)")
+                caster.feed(corrections)
+                caster.update_position(
+                    nav.pvt.latitude, nav.pvt.longitude)
 
-                except RuntimeError as e:
-                    print(f"RTK corrections not available: {e}")
+                clients = caster.client_count()
+                if clients > 0:
+                    print(f"Broadcasting to {clients} client(s)")
 
     except KeyboardInterrupt:
         print("\nStopping RTK Base monitoring...")
