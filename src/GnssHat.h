@@ -548,6 +548,7 @@ typedef struct
 
 typedef struct jp_gnss_hat jp_gnss_hat_t;
 
+/* Never returns NULL: an unknown or missing HAT terminates the process. */
 jp_gnss_hat_t* jp_gnss_hat_create(void);
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat);

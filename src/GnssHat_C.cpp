@@ -625,16 +625,9 @@ extern "C"
 
 jp_gnss_hat_t* jp_gnss_hat_create()
 {
-    try
-    {
-        auto* wrapper = new jp_gnss_hat;
-        wrapper->instance = IGnssHat::create();
-        return wrapper;
-    }
-    catch (...)
-    {
-        return nullptr;
-    }
+    auto* wrapper = new jp_gnss_hat;
+    wrapper->instance = IGnssHat::create();
+    return wrapper;
 }
 
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat)

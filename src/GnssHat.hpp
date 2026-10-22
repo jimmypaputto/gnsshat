@@ -61,6 +61,8 @@ public:
     virtual void triggerTimeMark(
         ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
 
+    // Never returns nullptr: an unknown or missing HAT terminates the process.
+    // Use Hat::detectProduct() first to fail gracefully.
     static IGnssHat* create();
 
     virtual ~IGnssHat() = default;

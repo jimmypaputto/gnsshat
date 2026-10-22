@@ -1740,12 +1740,9 @@ static PyObject* GnssHat_new(PyTypeObject* type, PyObject* args, PyObject* kwds)
 
 static int GnssHat_init(GnssHat* self, PyObject* args, PyObject* kwds)
 {
+    /* Never NULL: an unknown or missing HAT terminates the process. */
     self->hat = jp_gnss_hat_create();
-    if (self->hat)
-        return 0;
-
-    PyErr_SetString(PyExc_RuntimeError, "Failed to create GNSS HAT instance");
-    return -1;
+    return 0;
 }
 
 static void GnssHat_dealloc(GnssHat* self)
