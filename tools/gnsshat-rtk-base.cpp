@@ -462,6 +462,31 @@ int main(int argc, char* argv[])
         cfg.ntripMode == ENtripMode::Caster ? "caster" : "server",
         cfg.ntripHost.c_str(), cfg.ntripPort, cfg.ntripMountpoint.c_str());
 
+    // 78 = EX_CONFIG: the unit file treats it as "do not restart".
+    static constexpr int kExitConfig = 78;
+
+    // TLS was explicitly requested — never fall back to plain TCP.
+    if (cfg.ntripTlsEnabled)
+    {
+        if (!NtripCaster::isTlsAvailable())
+        {
+            logLine(LogLvl::Error,
+                    "[ntrip.tls] is enabled, but gnsshat was built without "
+                    "TLS support (rebuild with -DNTRIP_TLS_SUPPORT=ON)");
+            sdNotifyRaw("STATUS=TLS requested but not supported by this build");
+            return kExitConfig;
+        }
+        if (cfg.ntripMode == ENtripMode::Caster &&
+            (cfg.ntripTlsCertFile.empty() || cfg.ntripTlsKeyFile.empty()))
+        {
+            logLine(LogLvl::Error,
+                    "[ntrip.tls] is enabled in caster mode, but cert_file "
+                    "and/or key_file is not set");
+            sdNotifyRaw("STATUS=TLS requested without certificate/key");
+            return kExitConfig;
+        }
+    }
+
     if (validateOnly)
     {
         logLine(LogLvl::Info, "Configuration is valid.");
@@ -474,10 +499,8 @@ int main(int argc, char* argv[])
 
     // ── HAT pre-flight check ────────────────────────────────────────
     // IGnssHat::create() terminates on unknown HATs; we check first so
-    // we can exit cleanly with a specific code (78 = EX_CONFIG) that the
-    // unit file treats as "do not restart".
+    // we can exit cleanly with kExitConfig.
     static constexpr const char* kRequiredHat = "L1/L5 GNSS RTK HAT";
-    static constexpr int kExitConfig = 78;
 
     const std::string detectedHat = Hat::detectProduct();
     if (detectedHat.empty())
@@ -548,8 +571,17 @@ int main(int argc, char* argv[])
         if (!cfg.ntripUsername.empty())
             caster->setCredentials(cfg.ntripUsername, cfg.ntripPassword);
 
-        if (cfg.ntripTlsEnabled && !cfg.ntripTlsCertFile.empty())
-            caster->setTls(cfg.ntripTlsCertFile, cfg.ntripTlsKeyFile);
+        if (cfg.ntripTlsEnabled &&
+            !caster->setTls(cfg.ntripTlsCertFile, cfg.ntripTlsKeyFile))
+        {
+            logLine(LogLvl::Error,
+                    "Failed to set up NTRIP caster TLS (cert '%s', key '%s')",
+                    cfg.ntripTlsCertFile.c_str(), cfg.ntripTlsKeyFile.c_str());
+            sdNotifyRaw("STATUS=Failed to set up NTRIP caster TLS");
+            delete caster;
+            delete hat;
+            return kExitConfig;
+        }
 
         if (!caster->start())
         {

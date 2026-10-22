@@ -21,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   not find `<jimmypaputto/...>` headers, or silently took them from a
   system-wide install, unless `BUILD_EXAMPLES` was on. The build tree now
   always provides the installed `include/jimmypaputto` layout
+- The C and C++ `timepulse-interrupt` examples spun printing "Timepulse not
+  enabled", because they never called `enableTimepulse()`. They now enable the
+  timepulse interrupt after `start()` and exit if that fails
+- `examples/python/ntrip_server.py` never configured the receiver and always
+  exited with "Failed to connect", because it skipped `start()` and misread
+  `NtripServer.connect()`. It now starts the HAT as a base, waits for
+  `TIME_ONLY_FIX` and reports missing corrections instead of hiding them
+- `examples/python/config_from_json.py` could not find `res/config.json` when
+  run from outside `examples/python`. Relative paths are now also looked up
+  next to the script
+- `gnsshat-rtk-base.service` only allowed `/dev/gpiochip4`, so on a Pi 4 the
+  service had no GPIO access. The unit now allows `char-gpiochip`, which
+  covers every Raspberry Pi model and kernel
+- `gnsshat-rtk-base` silently ran without TLS when `[ntrip.tls]` was enabled
+  but the build lacked `NTRIP_TLS_SUPPORT`, the caster certificate was not set
+  or could not be loaded. It now exits with code 78 (EX_CONFIG) instead
 
 ## [1.2.0] - 2026-10-16
 

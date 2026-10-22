@@ -42,6 +42,14 @@ auto main() -> int
 
     printf("Startup done, ublox configured\r\n");
 
+    // Kernel PPS (dtoverlay=pps-gpio) holds GPIO 5 and makes this fail
+    if (!ubxHat->enableTimepulse())
+    {
+        printf("Failed to enable timepulse, exit\r\n");
+        delete ubxHat;
+        return -1;
+    }
+
     while (true)
     {
         ubxHat->timepulse();
