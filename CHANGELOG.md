@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
+  `rtk.base` is set, because the base config was silently ignored. Leave
+  `rtk.base` unset for a rover
+
+### Fixed
+- `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
+  configured the module as a rover, invalid base parameters were accepted and
+  `rtk` on the L1 GNSS HAT was ignored. `start()` now rejects these configs
+  with a message on stderr and leaves `rtk()` null after a failed start
+
 ## [1.2.0] - 2026-10-16
 
 ### Added

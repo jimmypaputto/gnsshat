@@ -286,7 +286,10 @@ public:
     bool start(const GnssConfig& config) override
     {
         rtk_ = std::unique_ptr<IRtk>(RtkFactory::create(rtcm3Store_, config));
-        return GnssHat::start<F9PStartup, F9PRun>(config);
+        const bool started = GnssHat::start<F9PStartup, F9PRun>(config);
+        if (!started)
+            rtk_.reset();
+        return started;
     }
 
     std::string_view name() const override
@@ -398,6 +401,24 @@ bool validateConfig(const GnssConfig& config)
                 "use L1/L5 GNSS TIME HAT\r\n"
             );
             return false;
+        }
+
+        if constexpr (std::is_same_v<StartupStrategy, M9NStartup>)
+        {
+            if (config.rtk.has_value())
+            {
+                fprintf(
+                    stderr,
+                    "[GnssConfig] RTK is not supported on this HAT - "
+                    "use L1/L5 GNSS RTK HAT\r\n"
+                );
+                return false;
+            }
+        }
+        else
+        {
+            if (!checkRtk(config.rtk))
+                return false;
         }
 
         return checkGeofencing(config.geofencing);

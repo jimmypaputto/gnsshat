@@ -395,6 +395,175 @@ TEST(TimingValidation, LlaBoundaryCoordinatesValid)
     EXPECT_TRUE(checkBaseConfig(cfg));
 }
 
+// --- RTK ----------------------------------------------------------------
+
+TEST(RtkValidation, NulloptIsValid)
+{
+    EXPECT_TRUE(checkRtk(std::nullopt));
+}
+
+TEST(RtkValidation, RoverIsValid)
+{
+    RtkConfig cfg { .mode = ERtkMode::Rover };
+    EXPECT_TRUE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, RoverWithBaseFails)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Rover,
+        .base = BaseConfig {
+            .mode = BaseConfig::SurveyIn {
+                .minimumObservationTime_s = 120,
+                .requiredPositionAccuracy_m = 2.0
+            }
+        }
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, BaseWithoutBaseConfigFails)
+{
+    RtkConfig cfg { .mode = ERtkMode::Base, .base = std::nullopt };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, UnknownModeFails)
+{
+    RtkConfig cfg { .mode = static_cast<ERtkMode>(2) };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, SurveyInValid)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::SurveyIn {
+                .minimumObservationTime_s = 120,
+                .requiredPositionAccuracy_m = 2.0
+            }
+        }
+    };
+    EXPECT_TRUE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, SurveyInZeroTimeFails)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::SurveyIn {
+                .minimumObservationTime_s = 0,
+                .requiredPositionAccuracy_m = 2.0
+            }
+        }
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, SurveyInNonPositiveAccuracyFails)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::SurveyIn {
+                .minimumObservationTime_s = 120,
+                .requiredPositionAccuracy_m = 0.0
+            }
+        }
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+
+    cfg.base->mode = BaseConfig::SurveyIn {
+        .minimumObservationTime_s = 120,
+        .requiredPositionAccuracy_m = -1.0
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, FixedPositionLlaValid)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::FixedPosition {
+                .position = BaseConfig::FixedPosition::Lla {
+                    .latitude_deg = 52.232222,
+                    .longitude_deg = 21.008055,
+                    .height_m = 110.0
+                },
+                .positionAccuracy_m = 0.05
+            }
+        }
+    };
+    EXPECT_TRUE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, FixedPositionEcefValid)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::FixedPosition {
+                .position = BaseConfig::FixedPosition::Ecef {
+                    .x_m = 3656215.987,
+                    .y_m = 1409547.654,
+                    .z_m = 5049982.321
+                },
+                .positionAccuracy_m = 0.05
+            }
+        }
+    };
+    EXPECT_TRUE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, FixedPositionNonPositiveAccuracyFails)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::FixedPosition {
+                .position = BaseConfig::FixedPosition::Ecef {
+                    .x_m = 3656215.987,
+                    .y_m = 1409547.654,
+                    .z_m = 5049982.321
+                },
+                .positionAccuracy_m = 0.0
+            }
+        }
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
+TEST(RtkValidation, LlaOutOfRangeFails)
+{
+    RtkConfig cfg {
+        .mode = ERtkMode::Base,
+        .base = BaseConfig {
+            .mode = BaseConfig::FixedPosition {
+                .position = BaseConfig::FixedPosition::Lla {
+                    .latitude_deg = 91.0,
+                    .longitude_deg = 21.0,
+                    .height_m = 110.0
+                },
+                .positionAccuracy_m = 0.05
+            }
+        }
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+
+    cfg.base->mode = BaseConfig::FixedPosition {
+        .position = BaseConfig::FixedPosition::Lla {
+            .latitude_deg = 52.0,
+            .longitude_deg = -181.0,
+            .height_m = 110.0
+        },
+        .positionAccuracy_m = 0.05
+    };
+    EXPECT_FALSE(checkRtk(cfg));
+}
+
 // --- NavigationFilters --------------------------------------------------
 
 TEST(NavigationFilters, NulloptIsValid)
