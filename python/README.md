@@ -105,7 +105,7 @@ config = {
 
 | Method | Description |
 |--------|-------------|
-| `start(config)` | Configure and start the GNSS module. Returns `True` on success. |
+| `start(config)` | Configure and start the GNSS module. Returns `True` on success, `False` if the config is rejected or startup fails. Raises `TypeError` / `ValueError` for a malformed config dict. |
 | `get_navigation()` | Get current navigation data (non-blocking). |
 | `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. |
 | `name()` | Get detected HAT name (e.g. `'L1/L5 GNSS TIME HAT'`). |

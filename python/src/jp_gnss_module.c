@@ -2640,12 +2640,8 @@ static PyObject* GnssHat_start(GnssHat* self, PyObject* args, PyObject* kwargs)
     jp_gnss_gnss_config_init(&config);
     populate_config_from_dict(config_dict, &config);
 
-    bool result = jp_gnss_hat_start(self->hat, &config);
-    if (!result)
-    {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to start GNSS HAT");
-        return NULL;
-    }
+    if (!jp_gnss_hat_start(self->hat, &config))
+        Py_RETURN_FALSE;
 
     Py_RETURN_TRUE;
 }
@@ -3571,7 +3567,9 @@ static PyMethodDef GnssHat_methods[] = {
         "start",
         (PyCFunction)GnssHat_start,
         METH_VARARGS | METH_KEYWORDS, 
-        "Start GNSS HAT with configuration"
+        "Start GNSS HAT with configuration. Returns False if the config "
+        "is rejected or startup fails; raises TypeError/ValueError for "
+        "a malformed config dict."
     },
     {
         "get_navigation",

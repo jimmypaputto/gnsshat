@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   raised `RuntimeError` while the base had no data yet, and the C functions
   returned `NULL` for that case too. They now return `[]` / `count == 0`, and
   fail only when the HAT is not an RTK base
+- Python `start()` raised `RuntimeError` instead of returning `False` when the
+  library rejected the config or startup failed, unlike the C/C++ API. It now
+  returns `False`; malformed config dicts still raise `TypeError` / `ValueError`
 
 ### Fixed
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
