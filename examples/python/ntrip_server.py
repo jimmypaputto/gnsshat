@@ -16,7 +16,6 @@
 import argparse
 import signal
 import sys
-import time
 
 from jimmypaputto import gnsshat
 
@@ -75,7 +74,13 @@ def main():
         },
     }
 
-    hat = gnsshat.GnssHat(config)
+    hat = gnsshat.GnssHat()
+    hat.hard_reset_cold_start()
+    if not hat.start(config):
+        print('Failed to start GNSS', file=sys.stderr)
+        return 1
+
+    print('GNSS started as RTK Base (Survey-In mode).')
 
     # ── Connect NtripServer to remote caster ────────────────────────
     server = gnsshat.NtripServer(
@@ -89,23 +94,33 @@ def main():
     server.set_log_level(2)  # Info
     server.set_auto_reconnect(True, 1000, 30000)
 
-    if not server.connect():
-        print('Failed to connect to remote caster', file=sys.stderr)
-        sys.exit(1)
+    # With auto-reconnect enabled, connect() only raises on setup errors;
+    # a caster that is down at startup is retried in the background.
+    try:
+        server.connect()
+    except RuntimeError as e:
+        print(f'Failed to connect to remote caster: {e}', file=sys.stderr)
+        return 1
 
-    print(f'Connected to {args.caster_host}:{args.caster_port}'
+    print(f'Pushing corrections to {args.caster_host}:{args.caster_port}'
           f'/{args.mountpoint}')
 
     # ── Main loop: forward corrections ──────────────────────────────
     while running:
+        nav = hat.wait_and_get_fresh_navigation()
+        fix_type = gnsshat.FixType(nav.pvt.fix_type)
+        if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
+            print(f'Fix type: {fix_type.name}, '
+                  f'waiting for TIME_ONLY_FIX for RTK Base')
+            continue
+
         try:
             corrections = hat.rtk_get_full_corrections()
-            if corrections:
-                server.feed(corrections)
-        except RuntimeError:
-            pass  # No corrections available yet
+        except RuntimeError as e:
+            print(f'RTK corrections not available: {e}', file=sys.stderr)
+            continue
 
-        time.sleep(1.0)
+        server.feed(corrections)
 
     # ── Cleanup ─────────────────────────────────────────────────────
     stats = server.get_stats()
@@ -115,7 +130,8 @@ def main():
 
     server.disconnect()
     print('Disconnected.')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

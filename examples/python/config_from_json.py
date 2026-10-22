@@ -1,10 +1,14 @@
 # Jimmy Paputto 2025
 
 import json
+import os
 import sys
 from typing import Dict, Any, Optional
 
 from jimmypaputto import gnsshat
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 # Maps JSON key names to gnsshat enum classes.
@@ -43,6 +47,16 @@ def _resolve_enums(obj: Any, key: str = '') -> Any:
             f"Valid: {[m for m in dir(enum_cls) if not m.startswith('_')]}"
         )
     return obj
+
+
+def resolve_config_path(path: str) -> str:
+    """Return *path* if it exists (relative to CWD), otherwise try it
+    relative to this script's directory, so ``res/config.json`` works
+    from any working directory."""
+    if os.path.exists(path) or os.path.isabs(path):
+        return path
+    candidate = os.path.join(SCRIPT_DIR, path)
+    return candidate if os.path.exists(candidate) else path
 
 
 def load_config_from_json(json_path: str) -> Optional[Dict[str, Any]]:
@@ -154,8 +168,9 @@ def print_config_summary(config: Dict[str, Any]) -> None:
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python config_from_json.py <config.json>")
-        print("\nExample config files:")
+        print("Usage: python3 config_from_json.py <config.json>")
+        print("\nRelative paths are tried in the current directory first,")
+        print("then next to this script. Bundled example configs:")
         print("  res/config.json")
         print("  res/config_no_geofencing.json")
         print("  res/config_no_timepulse.json")
@@ -164,7 +179,7 @@ def main():
         print("  res/config_timing.json")
         return 1
 
-    config_path = sys.argv[1]
+    config_path = resolve_config_path(sys.argv[1])
     print(f"Loading configuration from: {config_path}")
 
     config = load_config_from_json(config_path)

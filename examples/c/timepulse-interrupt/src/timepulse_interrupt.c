@@ -69,6 +69,14 @@ int main(void)
 
     printf("Startup done, ublox configured\r\n");
 
+    /* Kernel PPS (dtoverlay=pps-gpio) holds GPIO 5 and makes this fail */
+    if (!jp_gnss_hat_enable_timepulse(gnss))
+    {
+        printf("Failed to enable timepulse, exit\r\n");
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
+
     jp_gnss_navigation_t navigation;
     uint32_t counter = 0;
 
