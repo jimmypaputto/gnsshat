@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   configured the module as a rover, invalid base parameters were accepted and
   `rtk` on the L1 GNSS HAT was ignored. `start()` now rejects these configs
   with a message on stderr and leaves `rtk()` null after a failed start
+- Projects using gnsshat through `add_subdirectory()` or `FetchContent` could
+  not find `<jimmypaputto/...>` headers, or silently took them from a
+  system-wide install, unless `BUILD_EXAMPLES` was on. The build tree now
+  always provides the installed `include/jimmypaputto` layout
 
 ## [1.2.0] - 2026-10-16
 

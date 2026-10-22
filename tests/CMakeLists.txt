@@ -25,3 +25,18 @@ target_include_directories(GnssHatTests PRIVATE ${GNSSHAT_ROOT_DIR}/src)
 target_link_libraries(GnssHatTests gnsshat GTest::GTest GTest::Main)
 
 add_test(NAME GnssHatTests COMMAND GnssHatTests)
+
+# Builds tests/subproject, which pulls gnsshat in with add_subdirectory and
+# includes <jimmypaputto/...> the way a FetchContent consumer does.
+add_test(NAME SubprojectIncludeLayout
+    COMMAND ${CMAKE_CTEST_COMMAND}
+        --build-and-test
+            ${GNSSHAT_ROOT_DIR}/tests/subproject
+            ${CMAKE_CURRENT_BINARY_DIR}/subproject
+        --build-generator ${CMAKE_GENERATOR}
+        --build-target consumer
+        --build-options
+            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DGNSSHAT_PLATFORM=${GNSSHAT_PLATFORM}
+)

@@ -158,6 +158,20 @@ target_include_directories(gnsshat
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+# The source tree has no jimmypaputto/ directory, so mirror the installed layout
+# in the build tree: projects using gnsshat via add_subdirectory or FetchContent
+# then resolve <jimmypaputto/...> here instead of in a system-wide install.
+file(MAKE_DIRECTORY ${GNSSHAT_BUILD_DIR}/include)
+execute_process(
+    COMMAND ln -snf ${GNSSHAT_ROOT_DIR}/src ${GNSSHAT_BUILD_DIR}/include/jimmypaputto
+    RESULT_VARIABLE _gnsshat_link_result
+)
+if(NOT _gnsshat_link_result EQUAL 0)
+    message(FATAL_ERROR "Failed to create ${GNSSHAT_BUILD_DIR}/include/jimmypaputto")
+endif()
+unset(_gnsshat_link_result)
+target_include_directories(gnsshat PUBLIC $<BUILD_INTERFACE:${GNSSHAT_BUILD_DIR}/include>)
+
 # Git info for BuildInfo
 execute_process(
     COMMAND git describe --always --dirty
@@ -214,10 +228,6 @@ if(BUILD_TESTS)
 endif()
 
 if(BUILD_EXAMPLES)
-    file(MAKE_DIRECTORY ${GNSSHAT_BUILD_DIR}/include)
-    execute_process(COMMAND ln -snf ${GNSSHAT_ROOT_DIR}/src ${GNSSHAT_BUILD_DIR}/include/jimmypaputto)
-    target_include_directories(gnsshat PUBLIC $<BUILD_INTERFACE:${GNSSHAT_BUILD_DIR}/include>)
-
     # C examples
     add_subdirectory(examples/c/geofencing)
     add_subdirectory(examples/c/hot-start)
