@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `wait_and_get_fresh_*()`, `timepulse()` or `join_forward_for_gpsd()` freed
   the HAT under that thread. `close()` now wakes those threads with
   `RuntimeError` and waits for running calls before releasing the HAT
+- The "Unknown HAT" message printed before `IGnssHat::create()` terminates
+  the process was lost whenever stdout was not a terminal (systemd, Docker,
+  ROS launch), because it was buffered. It now goes to stderr and names the
+  detected product
 
 ## [1.2.0] - 2026-10-16
 

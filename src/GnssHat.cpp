@@ -409,7 +409,7 @@ IGnssHat* IGnssHat::create()
     if (GnssL1L5RtkHatProduct == hatProduct)
         return new GnssL1L5TRtkHat();
 
-    printf("[GNSS] Unknown HAT, FATAL\r\n");
+    fprintf(stderr, "[GNSS] Unknown HAT '%s', FATAL\r\n", hatProduct.c_str());
     std::terminate();
 }
 
