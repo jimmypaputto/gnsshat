@@ -108,13 +108,13 @@ config = {
 |--------|-------------|
 | `start(config)` | Configure and start the GNSS module. Returns `True` on success, `False` if the config is rejected or startup fails. Raises `TypeError` / `ValueError` for a malformed config dict. |
 | `get_navigation()` | Get current navigation data (non-blocking). |
-| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. |
+| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. Returns `None` once the waits are stopped by `close()` or `stop_on_signals()`. |
 | `name()` | Get detected HAT name (e.g. `'L1/L5 GNSS TIME HAT'`). |
 | `soft_reset_hot_start()` | Software reset — preserves almanac/ephemeris for fast TTFF. |
 | `hard_reset_cold_start()` | Hardware reset — full cold start. |
 | `enable_timepulse()` | Enable 1PPS output on GPIO 5. |
 | `disable_timepulse()` | Disable 1PPS output. |
-| `timepulse()` | Block until next 1PPS interrupt. Call `enable_timepulse()` first. Releases GIL. |
+| `timepulse()` | Block until next 1PPS interrupt. Releases GIL. Returns `True`, or `False` when the timepulse is not enabled or the waits are stopped. |
 | `start_forward_for_gpsd()` | Start NMEA forwarding to a virtual TTY for gpsd. |
 | `stop_forward_for_gpsd()` | Stop NMEA forwarding. |
 | `join_forward_for_gpsd()` | Block until forwarding thread exits. Releases GIL. |
@@ -124,11 +124,12 @@ config = {
 | `rtk_get_rtcm3_frame(msg_id)` | Get a specific RTCM3 frame by message ID. Returns `bytes`. |
 | `rtk_apply_corrections(frames)` | Send RTCM3 correction frames to RTK rover. Takes `list[bytes]`. |
 | `get_time_mark()` | Get current time mark data (non-blocking). Returns `TimeMark` or `None`. |
-| `wait_and_get_fresh_time_mark()` | Block until new time mark event arrives. Releases GIL. |
+| `wait_and_get_fresh_time_mark()` | Block until new time mark event arrives. Releases GIL. Returns `None` when the HAT has no time mark input or the waits are stopped. |
 | `enable_time_mark_trigger()` | Enable EXTINT pin (GPIO 17) as output for software-triggered time marks. |
 | `disable_time_mark_trigger()` | Disable EXTINT trigger. |
 | `trigger_time_mark(edge)` | Trigger a time mark event. Optional `TimeMarkTriggerEdge` arg (default `TOGGLE`). |
-| `close()` | Stop gpsd forwarding, timepulse and time mark trigger and release the HAT. Threads blocked in `wait_and_get_fresh_*()` or `timepulse()` are woken with `RuntimeError`. Idempotent. |
+| `stop_on_signals()` | Make SIGINT and SIGTERM stop the waits for good instead of raising `KeyboardInterrupt`, until the HAT is closed. A second signal terminates the process. |
+| `close()` | Stop the waits and gpsd forwarding and release the HAT. Threads blocked in `wait_and_get_fresh_*()` or `timepulse()` get `None` / `False`. Idempotent. |
 | `closed` | `True` once `close()` has been called. Any other method then raises `RuntimeError`. |
 
 Supports context manager. Leaving the `with` block calls `close()`, like a file:
@@ -136,14 +137,16 @@ the object cannot be reused afterwards, so create a new `GnssHat()` instead.
 
 ```python
 with gnsshat.GnssHat() as hat:
+    hat.stop_on_signals()  # Ctrl+C ends the loop below
     hat.start(config)
-    nav = hat.wait_and_get_fresh_navigation()
+    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+        print(nav.pvt.latitude, nav.pvt.longitude)
 # close() stopped GPSD forwarding, disabled timepulse and released the HAT
 ```
 
 `close()` may be called while other threads use the HAT: it wakes the ones
-blocked in `wait_and_get_fresh_*()` or `timepulse()` (they get `RuntimeError`)
-and waits for in-progress calls before releasing the handle.
+blocked in `wait_and_get_fresh_*()` or `timepulse()` (they get `None` /
+`False`) and waits for in-progress calls before releasing the handle.
 
 ## Module Functions and Constants
 

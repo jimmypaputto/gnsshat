@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
@@ -100,13 +101,8 @@ GnssConfig createDefaultConfig()
 
 auto main() -> int
 {
-    auto* ubxHat = IGnssHat::create();
-    if (!ubxHat)
-    {
-        printf("Failed to create GNSS HAT instance\r\n");
-        return -1;
-    }
-
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
+    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createDefaultConfig());
     if (!isStartupDone)
@@ -116,11 +112,8 @@ auto main() -> int
     }
     printf("GNSS started successfully. Monitoring satellite data...\r\n\n");
 
-    while (true)
-    {
-        const auto navigation = ubxHat->waitAndGetFreshNavigation();
-        printSatellites(navigation);
-    }
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
+        printSatellites(*navigation);
 
     return 0;
 }

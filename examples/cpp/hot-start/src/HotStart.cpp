@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
@@ -26,10 +27,23 @@ JimmyPaputto::GnssConfig createDefaultConfig()
     };
 }
 
+// Returns false if the wait is stopped before the fix.
+static bool waitForFix(JimmyPaputto::IGnssHat& hat)
+{
+    while (const auto navigation = hat.waitAndGetFreshNavigation())
+    {
+        if (navigation->pvt.fixStatus == JimmyPaputto::EFixStatus::Active)
+            return true;
+    }
+    return false;
+}
+
 auto main() -> int
 {
     const auto gnssConfig = createDefaultConfig();
-    auto* ubxHat = JimmyPaputto::IGnssHat::create();
+    std::unique_ptr<JimmyPaputto::IGnssHat> ubxHat(
+        JimmyPaputto::IGnssHat::create());
+    ubxHat->stopOnSignals();
     ubxHat->hardResetUbloxSom_ColdStart();
     const auto isStartupDone = ubxHat->start(gnssConfig);
     if (!isStartupDone)
@@ -41,12 +55,8 @@ auto main() -> int
 
     ubxHat->hardResetUbloxSom_ColdStart();
     auto start = std::chrono::high_resolution_clock::now();
-    while (true)
-    {
-        auto fixStatus = ubxHat->waitAndGetFreshNavigation().pvt.fixStatus;
-        if (fixStatus == JimmyPaputto::EFixStatus::Active)
-            break;
-    }
+    if (!waitForFix(*ubxHat))
+        return 0;
     auto stop = std::chrono::high_resolution_clock::now();
     auto time2fix =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
@@ -59,12 +69,8 @@ auto main() -> int
     ubxHat->softResetUbloxSom_HotStart();
     start = std::chrono::high_resolution_clock::now();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    while (true)
-    {
-        auto fixStatus = ubxHat->waitAndGetFreshNavigation().pvt.fixStatus;
-        if (fixStatus == JimmyPaputto::EFixStatus::Active)
-            break;
-    }
+    if (!waitForFix(*ubxHat))
+        return 0;
     stop = std::chrono::high_resolution_clock::now();
     time2fix =
         std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();

@@ -24,7 +24,8 @@ The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. T
 `GpsdInteractive` is an example — adapt the same mechanism in your own code. Your application can forward NMEA to gpsd while doing its own work at the same time. The forwarding runs in a background thread — no collisions with navigation reads.
 
 ```cpp
-auto* ubxHat = IGnssHat::create();
+std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
+ubxHat->stopOnSignals();
 ubxHat->start(config);
 
 // Start NMEA forwarding in background
@@ -32,13 +33,11 @@ ubxHat->startForwardForGpsd();
 printf("gpsd device: %s\n", ubxHat->getGpsdDevicePath().c_str());
 
 // Your app keeps running — navigation and gpsd work simultaneously
-while (running)
+while (const auto nav = ubxHat->waitAndGetFreshNavigation())
 {
-    auto nav = ubxHat->waitAndGetFreshNavigation();
-    // use nav...
+    // use *nav...
 }
-
-ubxHat->stopForwardForGpsd();
+// Ctrl+C ends the loop; the destructor stops the forwarder
 ```
 
 Build and run:

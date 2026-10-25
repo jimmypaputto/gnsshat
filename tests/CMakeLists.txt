@@ -20,6 +20,8 @@ add_executable(GnssHatTests
     TestHatLifecycle.cpp
     TestCApi.cpp
     TestNmeaForwarder.cpp
+    TestNotifier.cpp
+    TestSignalStop.cpp
 )
 set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 

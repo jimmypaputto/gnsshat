@@ -2,15 +2,14 @@
  * Jimmy Paputto 2025
  */
 
-#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
 
-#include <signal.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -18,14 +17,6 @@
 
 
 using namespace JimmyPaputto;
-
-std::atomic<bool> running{true};
-
-void signalHandler(int signal)
-{
-    if (signal == SIGINT)
-        running = false;
-}
 
 void clearScreen()
 {
@@ -290,11 +281,10 @@ GnssConfig createDefaultConfig()
 
 auto main() -> int
 {
-    signal(SIGINT, signalHandler);
-
     hideCursor();
 
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
+    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
 
     clearScreen();
@@ -312,16 +302,12 @@ auto main() -> int
         return -1;
     }
 
-    while (running)
-    {
-        const auto navigation = ubxHat->waitAndGetFreshNavigation();
-        printNavigationTable(navigation, std::string(ubxHat->name()));
-    }
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
+        printNavigationTable(*navigation, std::string(ubxHat->name()));
 
     showCursor();
     clearScreen();
     printf(COLOR_RED "GNSS monitoring stopped gracefully.\n" COLOR_RESET);
-    delete ubxHat;
 
     return 0;
 }

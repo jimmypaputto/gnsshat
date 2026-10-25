@@ -49,7 +49,7 @@ TEST(CApi, ShutdownMakesWaitsReturnFalse)
         jp_gnss_time_mark_t timeMark;
         EXPECT_FALSE(jp_gnss_hat_wait_and_get_fresh_time_mark(hat, &timeMark));
     }
-    EXPECT_FALSE(jp_gnss_hat_start_forward_for_gpsd(hat));
+    EXPECT_FALSE(jp_gnss_hat_timepulse(hat));
 
     jp_gnss_hat_destroy(hat);
 }

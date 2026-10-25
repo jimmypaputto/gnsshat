@@ -4,13 +4,13 @@
 
 #include "GnssHat.h"
 #include "GnssHat.hpp"
-#include "GnssHatInternal.hpp"
 
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
 #include <new>
 #include <optional>
+#include <stop_token>
 
 
 using namespace JimmyPaputto;
@@ -619,6 +619,8 @@ jp_gnss_time_mark_t convert_time_mark(const TimeMark& cpp_tm)
 struct jp_gnss_hat
 {
     IGnssHat* instance;
+    // Passed to every wait, so that jp_gnss_hat_shutdown() can end them.
+    std::stop_source stop;
 };
 
 extern "C"
@@ -636,7 +638,16 @@ void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat)
     if (!hat || !hat->instance)
         return;
 
-    Internal::shutdown(*hat->instance);
+    hat->stop.request_stop();
+    hat->instance->stopForwardForGpsd();
+}
+
+bool jp_gnss_hat_stop_on_signals(jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return false;
+
+    return hat->instance->stopOnSignals();
 }
 
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat)
@@ -677,7 +688,8 @@ bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     if (!hat->instance)
         return false;
 
-    const auto fresh = Internal::waitForNavigation(*hat->instance);
+    const auto fresh =
+        hat->instance->waitAndGetFreshNavigation(hat->stop.get_token());
     if (!fresh)
         return false;
 
@@ -967,15 +979,12 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->save_to_flash = false;
 }
 
-void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
+bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
 {
-    if (!hat)
-        return;
+    if (!hat || !hat->instance)
+        return false;
 
-    if (!hat->instance)
-        return;
-
-    hat->instance->timepulse();
+    return hat->instance->timepulse(hat->stop.get_token());
 }
 
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
@@ -1182,7 +1191,8 @@ bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
     if (!hat || !time_mark || !hat->instance)
         return false;
 
-    const auto fresh = Internal::waitForTimeMark(*hat->instance);
+    const auto fresh =
+        hat->instance->waitAndGetFreshTimeMark(hat->stop.get_token());
     if (!fresh)
         return false;
 

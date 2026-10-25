@@ -3,6 +3,7 @@
  */
 
 #include <cstdio>
+#include <memory>
 
 #include <jimmypaputto/GnssHat.hpp>
 
@@ -61,7 +62,8 @@ void analyzeRfBlock(const RfBlock& rfBlock)
 auto main() -> int
 {
     const auto gnssConfig = createDefaultConfig();
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
+    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
     const auto isStartupDone = ubxHat->start(gnssConfig);
     if (!isStartupDone)
@@ -70,9 +72,9 @@ auto main() -> int
         return -1;
     }
 
-    while (true)
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
     {
-        const auto rfBlocks = ubxHat->waitAndGetFreshNavigation().rfBlocks;
+        const auto& rfBlocks = navigation->rfBlocks;
         if (rfBlocks.empty())
             continue;
         printf("============================================\r\n");

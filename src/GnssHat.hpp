@@ -7,9 +7,10 @@
 
 #include "Version.hpp"
 
+#include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
-#include <optional>
 
 #include "ublox/GnssConfig.hpp"
 #include "ublox/Navigation.hpp"
@@ -32,7 +33,11 @@ public:
     virtual std::string_view name() const = 0;
 
     virtual Navigation navigation() const = 0;
-    virtual Navigation waitAndGetFreshNavigation() = 0;
+    // Blocks until the next navigation epoch. Returns std::nullopt once the
+    // wait is stopped: by `stop`, by a signal after stopOnSignals(), or by
+    // the destruction of this instance.
+    virtual std::optional<Navigation> waitAndGetFreshNavigation(
+        std::stop_token stop = {}) = 0;
 
     virtual void hardResetUbloxSom_ColdStart() const = 0;
     virtual void softResetUbloxSom_HotStart() = 0;
@@ -46,10 +51,16 @@ public:
 
     virtual bool enableTimepulse() = 0;
     virtual void disableTimepulse() = 0;
-    virtual void timepulse() = 0;
+    // Blocks until the next timepulse. Returns false when the timepulse is
+    // not enabled or the wait is stopped, as in waitAndGetFreshNavigation().
+    virtual bool timepulse(std::stop_token stop = {}) = 0;
 
     virtual std::optional<TimeMark> timeMark() const = 0;
-    virtual TimeMark waitAndGetFreshTimeMark() = 0;
+    // Blocks until the next time mark event. Returns std::nullopt when the
+    // HAT has no time mark input or the wait is stopped, as in
+    // waitAndGetFreshNavigation().
+    virtual std::optional<TimeMark> waitAndGetFreshTimeMark(
+        std::stop_token stop = {}) = 0;
 
     virtual SystemHealth systemHealth() const = 0;
     virtual std::string swVersion() const = 0;
@@ -61,14 +72,20 @@ public:
     virtual void triggerTimeMark(
         ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
 
+    // SIGINT and SIGTERM stop every wait of this instance for good, so a loop
+    // on the waits ends and destructors clean up. Replaces the process'
+    // handlers of these signals until the last instance that called this is
+    // destroyed; after the first signal a second one terminates the process
+    // at once. Returns false if the handlers could not be installed.
+    virtual bool stopOnSignals() = 0;
+
     // Never returns nullptr: an unknown or missing HAT terminates the process.
     // Use Hat::detectProduct() first to fail gracefully.
     static IGnssHat* create();
 
-    // Deleting wakes threads blocked in waitAndGetFresh*(), timepulse() or
-    // joinForwardForGpsd() and waits until they return (the waits with
-    // default-constructed data). No thread may start a new call once deletion
-    // has begun, so stop worker loops first and join them afterwards.
+    // Deleting stops the waits, wakes joinForwardForGpsd() and waits until
+    // blocked calls have returned. No thread may start a new call once
+    // deletion has begun.
     virtual ~IGnssHat() = default;
 };
 

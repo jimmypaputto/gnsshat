@@ -550,18 +550,23 @@ typedef struct jp_gnss_hat jp_gnss_hat_t;
 
 /* Never returns NULL: an unknown or missing HAT terminates the process. */
 jp_gnss_hat_t* jp_gnss_hat_create(void);
-/* Final step before jp_gnss_hat_destroy(): wakes threads blocked in
- * jp_gnss_hat_wait_and_get_fresh_* (they return false), jp_gnss_hat_timepulse
- * and jp_gnss_hat_join_forward_for_gpsd, and stops gpsd forwarding. Later
- * waits return at once, so worker loops on the wait functions end and can be
- * joined before the handle is destroyed. */
+/* Stops the waits (jp_gnss_hat_wait_and_get_fresh_*, jp_gnss_hat_timepulse)
+ * for good, so they return false now and later, and stops gpsd forwarding,
+ * which wakes jp_gnss_hat_join_forward_for_gpsd. Use it to end worker loops
+ * and join them before jp_gnss_hat_destroy(). */
 void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat);
-/* Wakes blocked calls and waits for them to return before freeing the handle.
- * No thread may start a new call once destruction has begun. */
+/* SIGINT and SIGTERM stop the waits for good, as jp_gnss_hat_shutdown()
+ * does. Replaces the process' handlers of these signals until the handle is
+ * destroyed; after the first signal a second one terminates the process.
+ * Returns false if the handlers could not be installed. */
+bool jp_gnss_hat_stop_on_signals(jp_gnss_hat_t* hat);
+/* Stops the waits and waits for blocked calls to return before freeing the
+ * handle. No thread may start a new call once destruction has begun. */
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start(jp_gnss_hat_t* hat,
     const jp_gnss_gnss_config_t* config);
+/* Blocks until the next epoch; false once the waits are stopped. */
 bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     jp_gnss_navigation_t* navigation);
 bool jp_gnss_hat_get_navigation(jp_gnss_hat_t* hat,
@@ -579,10 +584,14 @@ void jp_gnss_hat_join_forward_for_gpsd(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat);
 void jp_gnss_hat_hard_reset_cold_start(jp_gnss_hat_t* hat);
 void jp_gnss_hat_soft_reset_hot_start(jp_gnss_hat_t* hat);
-void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
+/* Blocks until the next timepulse; false when the timepulse is not enabled
+ * or the waits are stopped. */
+bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
 
 bool jp_gnss_hat_get_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_t* time_mark);
+/* Blocks until the next time mark event; false when the HAT has no time mark
+ * input or the waits are stopped. */
 bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_t* time_mark);
 bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat);

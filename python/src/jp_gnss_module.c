@@ -2687,14 +2687,6 @@ static bool hat_is_open(GnssHat* self)
     (self)->in_flight--; \
 } while (0)
 
-/* A blocking wait woken by close() must not hand back an empty result. */
-#define CHECK_NOT_CLOSED_AFTER_WAIT(self) do { \
-    if ((self)->closed) { \
-        PyErr_SetString(PyExc_RuntimeError, "GnssHat is closed"); \
-        return NULL; \
-    } \
-} while (0)
-
 static PyObject* GnssHat_start(GnssHat* self, PyObject* args, PyObject* kwargs)
 {
     CHECK_HAT(self);
@@ -3275,16 +3267,8 @@ static PyObject* GnssHat_wait_and_get_fresh_navigation(GnssHat* self, PyObject* 
 
     HAT_CALL_NOGIL(self,
         result = jp_gnss_hat_wait_and_get_fresh_navigation(self->hat, &nav));
-    CHECK_NOT_CLOSED_AFTER_WAIT(self);
-
     if (!result)
-    {
-        PyErr_SetString(
-            PyExc_RuntimeError,
-            "Failed to wait for navigation data"
-        );
-        return NULL;
-    }
+        Py_RETURN_NONE;
 
     return convert_navigation_to_python(&nav);
 }
@@ -3362,10 +3346,9 @@ static PyObject* GnssHat_timepulse(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
 
-    HAT_CALL_NOGIL(self, jp_gnss_hat_timepulse(self->hat));
-    CHECK_NOT_CLOSED_AFTER_WAIT(self);
-
-    Py_RETURN_NONE;
+    bool result;
+    HAT_CALL_NOGIL(self, result = jp_gnss_hat_timepulse(self->hat));
+    return PyBool_FromLong(result);
 }
 
 static PyObject* GnssHat_name(GnssHat* self, PyObject* args)
@@ -3562,14 +3545,8 @@ static PyObject* GnssHat_wait_and_get_fresh_time_mark(GnssHat* self,
 
     HAT_CALL_NOGIL(self,
         result = jp_gnss_hat_wait_and_get_fresh_time_mark(self->hat, &tm));
-    CHECK_NOT_CLOSED_AFTER_WAIT(self);
-
     if (!result)
-    {
-        PyErr_SetString(PyExc_RuntimeError,
-            "Failed to wait for time mark data");
-        return NULL;
-    }
+        Py_RETURN_NONE;
 
     return convert_time_mark_to_python(&tm);
 }
@@ -3607,6 +3584,12 @@ static PyObject* GnssHat_trigger_time_mark(GnssHat* self, PyObject* args)
     jp_gnss_hat_trigger_time_mark(self->hat,
         (jp_gnss_time_mark_trigger_edge_t)edge);
     Py_RETURN_NONE;
+}
+
+static PyObject* GnssHat_stop_on_signals(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+    return PyBool_FromLong(jp_gnss_hat_stop_on_signals(self->hat));
 }
 
 static PyObject* GnssHat_close(GnssHat* self, PyObject* args)
@@ -3672,7 +3655,9 @@ static PyMethodDef GnssHat_methods[] = {
         "wait_and_get_fresh_navigation",
         (PyCFunction)GnssHat_wait_and_get_fresh_navigation,
         METH_NOARGS,
-        "Wait for fresh navigation data"
+        "Block until the next navigation epoch. Releases the GIL. Returns "
+        "Navigation, or None once the waits are stopped by close() or "
+        "stop_on_signals()."
     },
     {
         "enable_timepulse",
@@ -3727,8 +3712,8 @@ static PyMethodDef GnssHat_methods[] = {
         "timepulse",
         (PyCFunction)GnssHat_timepulse,
         METH_NOARGS,
-        "Wait for the next timepulse interrupt. "
-        "Call enable_timepulse() first."
+        "Block until the next timepulse. Releases the GIL. Returns True, or "
+        "False when the timepulse is not enabled or the waits are stopped."
     },
     {
         "name",
@@ -3777,7 +3762,9 @@ static PyMethodDef GnssHat_methods[] = {
         "wait_and_get_fresh_time_mark",
         (PyCFunction)GnssHat_wait_and_get_fresh_time_mark,
         METH_NOARGS,
-        "Wait for fresh time mark data (blocking)."
+        "Block until the next time mark event. Releases the GIL. Returns "
+        "TimeMark, or None when the HAT has no time mark input or the waits "
+        "are stopped."
     },
     {
         "enable_time_mark_trigger",
@@ -3802,9 +3789,18 @@ static PyMethodDef GnssHat_methods[] = {
         "close",
         (PyCFunction)GnssHat_close,
         METH_NOARGS,
-        "Stop gpsd forwarding, timepulse and time mark trigger and release "
-        "the HAT. Threads blocked in wait_and_get_fresh_*() or timepulse() "
-        "are woken with RuntimeError. Safe to call more than once."
+        "Stop the waits and gpsd forwarding and release the HAT. Threads "
+        "blocked in wait_and_get_fresh_*() or timepulse() get None or False. "
+        "Safe to call more than once."
+    },
+    {
+        "stop_on_signals",
+        (PyCFunction)GnssHat_stop_on_signals,
+        METH_NOARGS,
+        "Make SIGINT and SIGTERM stop the waits for good instead of raising "
+        "KeyboardInterrupt, until the HAT is closed. A second signal "
+        "terminates the process. Returns False if the handlers could not be "
+        "installed."
     },
     {
         "__enter__",

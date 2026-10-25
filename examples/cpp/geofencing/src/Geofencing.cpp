@@ -3,6 +3,7 @@
  */
 
 #include <cstdio>
+#include <memory>
 
 #include <jimmypaputto/GnssHat.hpp>
 
@@ -120,7 +121,8 @@ void print(const Geofencing& geofencing)
 
 auto main() -> int
 {
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
+    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createDefaultConfig());
     if (!isStartupDone)
@@ -131,11 +133,8 @@ auto main() -> int
 
     printf("Startup done, ublox configured\r\n");
 
-    while (true)
-    {
-        const auto geofencing = ubxHat->waitAndGetFreshNavigation().geofencing;
-        print(geofencing);
-    }
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
+        print(navigation->geofencing);
 
     return 0;
 }

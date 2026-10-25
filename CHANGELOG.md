@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `stopOnSignals()` (C `jp_gnss_hat_stop_on_signals()`, Python
+  `stop_on_signals()`) makes SIGINT and SIGTERM stop the waits, so Ctrl+C or
+  `systemctl stop` ends a wait loop even when no epoch arrives and the
+  destructors clean up. A second signal terminates the process at once
+- The C++ waits take an optional `std::stop_token`, which ends only that wait
+  and leaves the HAT usable, for worker threads and ROS 2 lifecycle nodes
 - `jp_gnss_hat_shutdown()` wakes threads blocked in the C wait, timepulse and
   gpsd join calls and makes the waits return `false`, so worker loops end and
   can be joined before `jp_gnss_hat_destroy()`
@@ -15,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   without a `with` block. Leaving a `with` block calls `close()`
 
 ### Changed
+- **Breaking:** `waitAndGetFreshNavigation()` and `waitAndGetFreshTimeMark()`
+  return `std::optional` and `timepulse()` returns `bool`, because a stopped
+  wait handed back empty data that looked real. They return `std::nullopt` /
+  `false` once stopped, and on HATs without the time mark input or with the
+  timepulse disabled; the C waits and Python follow with `false` / `None`
 - `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
   `rtk.base` is set, because the base config was silently ignored. Leave
   `rtk.base` unset for a rover
@@ -53,8 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   guarded by a mutex
 - Leaving a Python `with GnssHat()` block while another thread was blocked in
   `wait_and_get_fresh_*()`, `timepulse()` or `join_forward_for_gpsd()` freed
-  the HAT under that thread. `close()` now wakes those threads with
-  `RuntimeError` and waits for running calls before releasing the HAT
+  the HAT under that thread. `close()` now ends those waits with `None` /
+  `False` and waits for running calls before releasing the HAT
 - The "Unknown HAT" message printed before `IGnssHat::create()` terminates
   the process was lost whenever stdout was not a terminal (systemd, Docker,
   ROS launch), because it was buffered. It now goes to stderr and names the

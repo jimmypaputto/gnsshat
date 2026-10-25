@@ -107,13 +107,15 @@ For most recent rpi images that would be version 2.
 
 ```cpp
 #include <cstdio>
+#include <memory>
 #include <jimmypaputto/GnssHat.hpp>
 
 using namespace JimmyPaputto;
 
 auto main() -> int
 {
-    auto* hat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+    hat->stopOnSignals();  // Ctrl+C ends the loop below
     hat->softResetUbloxSom_HotStart();
 
     GnssConfig config {
@@ -136,13 +138,13 @@ auto main() -> int
         return -1;
     }
 
-    while (true)
+    while (const auto nav = hat->waitAndGetFreshNavigation())
     {
-        const auto nav = hat->waitAndGetFreshNavigation();
         printf("%.6f, %.6f  alt=%.1fm  sats=%d\n",
-            nav.pvt.latitude, nav.pvt.longitude,
-            nav.pvt.altitude, nav.pvt.visibleSatellites);
+            nav->pvt.latitude, nav->pvt.longitude,
+            nav->pvt.altitude, nav->pvt.visibleSatellites);
     }
+    return 0;  // the destructor stops and releases everything
 }
 ```
 
@@ -183,6 +185,7 @@ while True:
 int main(void)
 {
     jp_gnss_hat_t* hat = jp_gnss_hat_create();
+    jp_gnss_hat_stop_on_signals(hat);  /* Ctrl+C ends the loop below */
     jp_gnss_hat_soft_reset_hot_start(hat);
 
     jp_gnss_gnss_config_t config;
@@ -225,22 +228,39 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation; terminates the process on an unknown HAT (check `Hat::detectProduct()` first) |
 | `start(config)` | Configure the u-blox module and start data acquisition |
 | `name()` | HAT name (e.g. `"L1 GNSS HAT"`) |
-| `waitAndGetFreshNavigation()` | Block until new data arrives, return `Navigation` |
+| `waitAndGetFreshNavigation(stop = {})` | Block until new data arrives; `std::nullopt` once the wait is stopped (see below) |
 | `navigation()` | Return last known `Navigation` immediately |
 | `softResetUbloxSom_HotStart()` | Soft reset (keeps ephemeris/almanac) |
 | `hardResetUbloxSom_ColdStart()` | Full cold reset (clears stored data) |
 | `rtk()` | RTK interface (`IRtk*`, non-null only on RTK HAT) |
 | `enableTimepulse()` / `disableTimepulse()` | Enable/disable timepulse GPIO (pin 5) |
-| `timepulse()` | Block until next timepulse |
+| `timepulse(stop = {})` | Block until next timepulse; `false` when not enabled or stopped |
 | `timeMark()` | Return last `TimeMark` or `std::nullopt` (non-blocking) |
-| `waitAndGetFreshTimeMark()` | Block until new TimeMark event arrives |
+| `waitAndGetFreshTimeMark(stop = {})` | Block until new TimeMark event arrives; `std::nullopt` without a time mark input or once stopped |
 | `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
 | `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
 | `joinForwardForGpsd()` | Block until forwarder thread finishes |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
+| `stopOnSignals()` | Make SIGINT/SIGTERM stop every wait of this instance for good |
 
-Deleting an `IGnssHat` wakes threads blocked in `waitAndGetFresh*()`, `timepulse()` or `joinForwardForGpsd()` and waits until they return (the waits with empty data). Stop worker loops before `delete` so they do not call into the instance again, and join them afterwards.
+A wait is stopped in three ways, and a loop on it then ends:
+
+- **`stopOnSignals()`** — for simple programs: Ctrl+C or `systemctl stop` ends the loop, and the destructors clean up. A second signal terminates the process at once.
+- **`std::stop_token`** — for worker threads: pass the token of a `std::jthread`, so that destroying or stopping the thread ends its wait. It ends only that wait, so the instance can be used again (e.g. ROS 2 lifecycle deactivate/activate).
+- **Destruction** — deleting an `IGnssHat` stops all waits and `joinForwardForGpsd()` and waits until the blocked calls have returned. No thread may start a new call once deletion has begun.
+
+```cpp
+std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+hat->start(config);
+std::jthread worker([&hat](std::stop_token stop) {
+    while (const auto nav = hat->waitAndGetFreshNavigation(stop))
+        publish(*nav);
+});
+// declared after `hat`: the worker is stopped and joined first
+```
+
+Threads started by the library block SIGINT and SIGTERM, so the application's signal handlers always run in its own threads.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
@@ -366,9 +386,9 @@ hat->start(config);
 hat->enableTimeMarkTrigger();
 hat->triggerTimeMark();  // toggle EXTINT
 
-auto tm = hat->waitAndGetFreshTimeMark();
-printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
-    tm.towRising_ms, tm.towSubRising_ns, tm.accuracyEstimate_ns);
+if (const auto tm = hat->waitAndGetFreshTimeMark())
+    printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
+        tm->towRising_ms, tm->towSubRising_ns, tm->accuracyEstimate_ns);
 ```
 
 See the TimeMark examples in `examples/cpp/time-mark/`, `examples/c/time-mark/` and `examples/python/time_mark.py`.

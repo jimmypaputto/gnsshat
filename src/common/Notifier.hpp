@@ -41,6 +41,25 @@ public:
         return true;
     }
 
+    // Returns false as soon as either token is stopped.
+    bool wait(std::stop_token stoken, std::stop_token other)
+    {
+        // Registered before mtx is taken: for an already stopped token the
+        // callback runs right here and takes mtx itself.
+        std::stop_callback wakeOnOtherStop(other, [this] {
+            std::lock_guard lock(mtx);
+            cv.notify_all();
+        });
+
+        std::unique_lock lock(mtx);
+        const bool woken = cv.wait(lock, stoken,
+            [this, &other]{ return ready || other.stop_requested(); });
+        if (!woken || other.stop_requested())
+            return false;
+        ready = false;
+        return true;
+    }
+
     // Side subscriber: keeps its own cursor instead of consuming `ready`, so
     // it neither steals nor misses the notifications seen by wait().
     bool waitForNewGeneration(uint64_t& cursor, std::stop_token stoken)
