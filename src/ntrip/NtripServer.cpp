@@ -16,6 +16,7 @@
 
 #include <sstream>
 
+#include "common/BlockTerminationSignals.hpp"
 #include "common/Utils.hpp"
 
 namespace JimmyPaputto
@@ -77,6 +78,7 @@ namespace JimmyPaputto
                 reconnectInitialMs_, reconnectMaxMs_);
         }
 
+        const BlockTerminationSignals blocked;
         monitorThread_ = std::jthread([this](std::stop_token st)
                                       { monitorLoop(st); });
         return true;

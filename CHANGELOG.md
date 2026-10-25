@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the process was lost whenever stdout was not a terminal (systemd, Docker,
   ROS launch), because it was buffered. It now goes to stderr and names the
   detected product
+- A SIGINT or SIGTERM handled by the application could run in a library
+  thread and interrupt its blocking I/O, which then failed like a device
+  error. Threads started by the library now block both signals
 
 ## [1.2.0] - 2026-10-16
 

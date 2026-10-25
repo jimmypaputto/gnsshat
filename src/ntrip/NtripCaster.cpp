@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <sstream>
 
+#include "common/BlockTerminationSignals.hpp"
 #include "common/Utils.hpp"
 
 namespace JimmyPaputto
@@ -70,8 +71,11 @@ namespace JimmyPaputto
 
         running_ = true;
         statsStart();
-        acceptThread_ = std::jthread([this](std::stop_token st)
-                                     { acceptLoop(st); });
+        {
+            const BlockTerminationSignals blocked;
+            acceptThread_ = std::jthread([this](std::stop_token st)
+                                         { acceptLoop(st); });
+        }
 
         log(ENtripLogLevel::Info, "[NtripCaster] Listening on %s:%u/%s (max %zu clients)",
             host_.c_str(), port_, mountpoint_.c_str(), maxClients_);

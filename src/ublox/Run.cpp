@@ -5,6 +5,7 @@
 #include "Run.hpp"
 
 #include "UartDriver.hpp"
+#include "common/BlockTerminationSignals.hpp"
 
 #include <algorithm>
 
@@ -138,6 +139,7 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     if (rtkConfig.mode == ERtkMode::Base && rtkConfig.base.has_value())
     {
         unfinishedFrameBuff_.reserve(unfinishedFrameBuffMaxSize);
+        const BlockTerminationSignals blocked;
         uart_ = std::jthread([this] (std::stop_token stoken) {
             while (!stoken.stop_requested())
             {
@@ -147,6 +149,7 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     }
     else if (rtkConfig.mode == ERtkMode::Rover)
     {
+        const BlockTerminationSignals blocked;
         uart_ = std::jthread([this](std::stop_token stoken) {
             while (!stoken.stop_requested())
             {
