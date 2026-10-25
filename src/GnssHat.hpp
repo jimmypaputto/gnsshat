@@ -46,6 +46,10 @@ public:
 
     virtual bool startForwardForGpsd() = 0;
     virtual void stopForwardForGpsd() = 0;
+    // Blocks until gpsd forwarding is stopped: by stopForwardForGpsd(), by a
+    // signal after stopOnSignals(), or by the destruction of this instance.
+    // Useful to park the main thread of a gpsd-only daemon; cleanup does not
+    // need it, because destruction stops the forwarder.
     virtual void joinForwardForGpsd() = 0;
     virtual std::string getGpsdDevicePath() const = 0;
 

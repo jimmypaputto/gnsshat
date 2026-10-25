@@ -60,7 +60,10 @@ Key API calls:
 - `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
 - `getGpsdDevicePath()` — returns path to virtual device (`/dev/jimmypaputto/gnss`)
 - `stopForwardForGpsd()` — stops forwarding, removes virtual device
-- `joinForwardForGpsd()` — blocks until forwarding is stopped
+- `joinForwardForGpsd()` — blocks until forwarding is stopped: by
+  `stopForwardForGpsd()`, by Ctrl+C / SIGTERM after `stopOnSignals()`, or by
+  destroying the HAT. Cleanup does not need it — the destructor stops the
+  forwarder and removes the virtual device
 
 ## Daemon (jpgnss2gpsd-bridge)
 

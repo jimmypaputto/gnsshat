@@ -240,7 +240,7 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
 | `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
-| `joinForwardForGpsd()` | Block until forwarder thread finishes |
+| `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, signal after `stopOnSignals()`, destruction) |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
 | `stopOnSignals()` | Make SIGINT/SIGTERM stop every wait of this instance for good |
 

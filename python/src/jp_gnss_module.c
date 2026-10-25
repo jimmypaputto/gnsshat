@@ -3687,7 +3687,8 @@ static PyMethodDef GnssHat_methods[] = {
         "join_forward_for_gpsd",
         (PyCFunction)GnssHat_join_forward_for_gpsd,
         METH_NOARGS,
-        "Join (wait for) GPSD forwarding thread"
+        "Block until GPSD forwarding is stopped by stop_forward_for_gpsd(), "
+        "a signal after stop_on_signals(), or close(). Releases the GIL."
     },
     {
         "get_gpsd_device_path",

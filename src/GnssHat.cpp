@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <type_traits>
@@ -142,7 +143,7 @@ protected:
         GnssHat& hat_;
     };
 
-    // Stops every wait for good and stops gpsd forwarding.
+    // Stops every wait and gpsd forwarding for good.
     void shutdown();
     // First step of every destructor in the hierarchy, before any member is
     // destroyed.
@@ -174,6 +175,10 @@ protected:
     std::atomic<bool> timepulseEnabled_{false};
 
 private:
+    // Whatever stops stopSource_ also stops gpsd forwarding, which wakes
+    // joinForwardForGpsd().
+    std::stop_callback<std::function<void()>> stopForwardingOnStop_{
+        stopSource_.get_token(), [this] { stopForwardForGpsd(); }};
     std::unique_ptr<SignalStopRegistration> signalStop_;
     std::mutex blockingCallsMtx_;
     std::condition_variable blockingCallsCv_;
@@ -759,7 +764,6 @@ bool GnssHat::stopOnSignals()
 void GnssHat::shutdown()
 {
     stopSource_.request_stop();
-    stopForwardForGpsd();
 }
 
 void GnssHat::shutdownAndWaitForBlockingCalls()
