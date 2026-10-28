@@ -638,14 +638,6 @@ void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat)
     hat->instance->shutdown();
 }
 
-bool jp_gnss_hat_stop_on_signals(jp_gnss_hat_t* hat)
-{
-    if (!hat || !hat->instance)
-        return false;
-
-    return hat->instance->stopOnSignals();
-}
-
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat)
 {
     if (!hat)

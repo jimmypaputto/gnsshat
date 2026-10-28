@@ -34,8 +34,8 @@ public:
 
     virtual Navigation navigation() const = 0;
     // Blocks until the next navigation epoch. Returns std::nullopt once the
-    // wait is stopped: by `stop`, by shutdown(), by a signal after
-    // stopOnSignals(), or by the destruction of this instance.
+    // wait is stopped: by `stop`, by shutdown(), or by the destruction of this
+    // instance.
     virtual std::optional<Navigation> waitAndGetFreshNavigation(
         std::stop_token stop = {}) = 0;
 
@@ -47,8 +47,7 @@ public:
     virtual bool startForwardForGpsd() = 0;
     virtual void stopForwardForGpsd() = 0;
     // Blocks until gpsd forwarding is stopped: by stopForwardForGpsd(), by
-    // shutdown(), by a signal after stopOnSignals(), or by the destruction of
-    // this instance.
+    // shutdown(), or by the destruction of this instance.
     // Useful to park the main thread of a gpsd-only daemon; cleanup does not
     // need it, because destruction stops the forwarder.
     virtual void joinForwardForGpsd() = 0;
@@ -85,13 +84,6 @@ public:
     // Releases nothing: join the threads that use the instance, then delete
     // it. Create a new instance to start again.
     virtual void shutdown() = 0;
-
-    // SIGINT and SIGTERM stop every wait of this instance for good, so a loop
-    // on the waits ends and destructors clean up. Replaces the process'
-    // handlers of these signals until the last instance that called this is
-    // destroyed; after the first signal a second one terminates the process
-    // at once. Returns false if the handlers could not be installed.
-    virtual bool stopOnSignals() = 0;
 
     // Never returns nullptr: an unknown or missing HAT terminates the process.
     // Use Hat::detectProduct() first to fail gracefully.

@@ -315,15 +315,13 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
 | `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
-| `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, `shutdown()`, signal after `stopOnSignals()`, destruction) |
+| `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, `shutdown()`, destruction) |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
 | `shutdown()` | Stop every wait and gpsd forwarding of this instance for good; thread-safe, not async-signal-safe |
-| `stopOnSignals()` | Make SIGINT/SIGTERM stop every wait of this instance for good |
 
-A wait is stopped in four ways, and a loop on it then ends:
+A wait is stopped in three ways, and a loop on it then ends:
 
 - **`shutdown()`** — for the whole program: ends every wait and `joinForwardForGpsd()` of the instance for good, so all loops on it end, and `start()` fails from then on (create a new instance to start again). It releases nothing: join the threads that use the HAT, then delete it. Thread-safe, but not async-signal-safe: call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler.
-- **`stopOnSignals()`** — for simple programs: Ctrl+C or `systemctl stop` ends the loop, and the destructors clean up. A second signal terminates the process at once.
 - **`std::stop_token`** — for worker threads: pass the token of a `std::jthread`, so that destroying or stopping the thread ends its wait. It ends only that wait, so the instance can be used again (e.g. ROS 2 lifecycle deactivate/activate).
 - **Destruction** — deleting an `IGnssHat` stops all waits and `joinForwardForGpsd()` and waits until the blocked calls have returned. No thread may start a new call once deletion has begun.
 

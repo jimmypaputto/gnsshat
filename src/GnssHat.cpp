@@ -15,7 +15,6 @@
 #include <type_traits>
 
 #include "common/BlockTerminationSignals.hpp"
-#include "common/SignalStop.hpp"
 #include "ublox/GnssConfig.hpp"
 #include "ublox/NavigationStore.hpp"
 #include "ublox/NmeaForwarder.hpp"
@@ -113,7 +112,6 @@ public:
     void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
     void shutdown() override;
-    bool stopOnSignals() override;
 
     SystemHealth systemHealth() const override;
     std::string swVersion() const override
@@ -174,7 +172,6 @@ protected:
     std::atomic<bool> timepulseEnabled_{false};
 
 private:
-    std::unique_ptr<SignalStopRegistration> signalStop_;
     std::mutex blockingCallsMtx_;
     std::condition_variable blockingCallsCv_;
     uint32_t blockingCalls_{0};
@@ -752,15 +749,6 @@ std::string GnssHat::getGpsdDevicePath() const
     return "";
 }
 
-bool GnssHat::stopOnSignals()
-{
-    if (signalStop_)
-        return true;
-
-    signalStop_ = SignalStopRegistration::create([this] { shutdown(); });
-    return signalStop_ != nullptr;
-}
-
 void GnssHat::shutdown()
 {
     stopSource_.request_stop();
@@ -769,8 +757,6 @@ void GnssHat::shutdown()
 
 void GnssHat::shutdownAndWaitForBlockingCalls()
 {
-    // Unregistered first: the signal callback must not run during teardown.
-    signalStop_.reset();
     shutdown();
     std::unique_lock lock(blockingCallsMtx_);
     blockingCallsCv_.wait(lock, [this] { return blockingCalls_ == 0; });

@@ -558,11 +558,6 @@ jp_gnss_hat_t* jp_gnss_hat_create(void);
  * normal thread, e.g. one waiting in sigwait(). The handle cannot be started
  * again; create a new one. */
 void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat);
-/* SIGINT and SIGTERM stop the waits for good, as jp_gnss_hat_shutdown()
- * does. Replaces the process' handlers of these signals until the handle is
- * destroyed; after the first signal a second one terminates the process.
- * Returns false if the handlers could not be installed. */
-bool jp_gnss_hat_stop_on_signals(jp_gnss_hat_t* hat);
 /* Stops the waits and waits for blocked calls to return before freeing the
  * handle. No thread may start a new call once destruction has begun. */
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
@@ -583,8 +578,8 @@ void jp_gnss_hat_disable_timepulse(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start_forward_for_gpsd(jp_gnss_hat_t* hat);
 void jp_gnss_hat_stop_forward_for_gpsd(jp_gnss_hat_t* hat);
 /* Blocks until gpsd forwarding is stopped: by
- * jp_gnss_hat_stop_forward_for_gpsd(), jp_gnss_hat_shutdown(), a signal after
- * jp_gnss_hat_stop_on_signals(), or jp_gnss_hat_destroy(). */
+ * jp_gnss_hat_stop_forward_for_gpsd(), jp_gnss_hat_shutdown(), or
+ * jp_gnss_hat_destroy(). */
 void jp_gnss_hat_join_forward_for_gpsd(jp_gnss_hat_t* hat);
 /* Empty string while gpsd forwarding is not running. */
 const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat);

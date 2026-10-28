@@ -3593,12 +3593,6 @@ static PyObject* GnssHat_shutdown(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
-static PyObject* GnssHat_stop_on_signals(GnssHat* self, PyObject* args)
-{
-    CHECK_HAT(self);
-    return PyBool_FromLong(jp_gnss_hat_stop_on_signals(self->hat));
-}
-
 static PyObject* GnssHat_close(GnssHat* self, PyObject* args)
 {
     GnssHat_close_handle(self);
@@ -3663,8 +3657,8 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_wait_and_get_fresh_navigation,
         METH_NOARGS,
         "Block until the next navigation epoch. Releases the GIL. Returns "
-        "Navigation, or None once the waits are stopped by shutdown(), "
-        "close() or stop_on_signals()."
+        "Navigation, or None once the waits are stopped by shutdown() or "
+        "close()."
     },
     {
         "enable_timepulse",
@@ -3695,8 +3689,7 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_join_forward_for_gpsd,
         METH_NOARGS,
         "Block until GPSD forwarding is stopped by stop_forward_for_gpsd(), "
-        "shutdown(), a signal after stop_on_signals(), or close(). Releases "
-        "the GIL."
+        "shutdown(), or close(). Releases the GIL."
     },
     {
         "get_gpsd_device_path",
@@ -3811,15 +3804,6 @@ static PyMethodDef GnssHat_methods[] = {
         "Idempotent and thread-safe; call it from a thread waiting in "
         "signal.sigwait(), not from a signal handler. Does not close the "
         "HAT: join the threads that use it, then close()."
-    },
-    {
-        "stop_on_signals",
-        (PyCFunction)GnssHat_stop_on_signals,
-        METH_NOARGS,
-        "Make SIGINT and SIGTERM stop the waits for good instead of raising "
-        "KeyboardInterrupt, until the HAT is closed. A second signal "
-        "terminates the process. Returns False if the handlers could not be "
-        "installed."
     },
     {
         "__enter__",

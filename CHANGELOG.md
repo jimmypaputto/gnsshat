@@ -8,10 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- `stopOnSignals()` (C `jp_gnss_hat_stop_on_signals()`, Python
-  `stop_on_signals()`) makes SIGINT and SIGTERM stop the waits, so Ctrl+C or
-  `systemctl stop` ends a wait loop even when no epoch arrives and the
-  destructors clean up. A second signal terminates the process at once
 - The C++ waits take an optional `std::stop_token`, which ends only that wait
   and leaves the HAT usable, for worker threads and ROS 2 lifecycle nodes
 - `shutdown()` (C `jp_gnss_hat_shutdown()`, Python `shutdown()`) stops every

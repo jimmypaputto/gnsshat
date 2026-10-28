@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <csignal>
 #include <cstdlib>
 #include <memory>
 #include <stop_token>
@@ -161,69 +160,6 @@ TEST(HatLifecycle, StopTokenEndsOnlyItsOwnWait)
     second.request_stop();
     second.join();
     EXPECT_TRUE(secondReturned);
-}
-
-// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
-TEST(HatLifecycle, StopOnSignalsEndsWaits)
-{
-    if (!hardwareTestsEnabled())
-        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
-
-    if (Hat::detectProduct().empty())
-        GTEST_SKIP() << "no HAT detected";
-
-    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
-    ASSERT_TRUE(hat->stopOnSignals());
-
-    // Not started, so no epoch arrives and only the signal ends the wait.
-    std::atomic<bool> stopped{false};
-    std::thread waiter([&] {
-        stopped = !hat->waitAndGetFreshNavigation();
-    });
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    EXPECT_FALSE(stopped);
-    ::kill(::getpid(), SIGINT);
-    waiter.join();
-
-    EXPECT_TRUE(stopped);
-    EXPECT_FALSE(hat->waitAndGetFreshNavigation()) << "the stop is permanent";
-}
-
-// Requires a real HAT and root for /dev/jimmypaputto, so it only runs with
-// GNSSHAT_HW_TESTS set.
-TEST(HatLifecycle, StopOnSignalsEndsGpsdJoin)
-{
-    if (!hardwareTestsEnabled())
-        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
-
-    if (Hat::detectProduct().empty())
-        GTEST_SKIP() << "no HAT detected";
-
-    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
-    ASSERT_TRUE(hat->stopOnSignals());
-    if (!hat->startForwardForGpsd())
-        GTEST_SKIP() << "gpsd forwarding needs root";
-
-    const std::string devicePath = hat->getGpsdDevicePath();
-    ASSERT_FALSE(devicePath.empty());
-
-    std::atomic<bool> joined{false};
-    std::thread joiner([&] {
-        hat->joinForwardForGpsd();
-        joined = true;
-    });
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    EXPECT_FALSE(joined);
-    ::kill(::getpid(), SIGINT);
-    joiner.join();
-
-    EXPECT_TRUE(joined);
-    EXPECT_TRUE(hat->getGpsdDevicePath().empty());
-    EXPECT_NE(::access(devicePath.c_str(), F_OK), 0)
-        << devicePath << " left behind";
-    EXPECT_FALSE(hat->startForwardForGpsd()) << "the stop is permanent";
 }
 
 // Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.

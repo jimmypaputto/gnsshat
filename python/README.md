@@ -108,7 +108,7 @@ config = {
 |--------|-------------|
 | `start(config)` | Configure and start the GNSS module. Returns `True` on success, `False` if the config is rejected or startup fails. Raises `TypeError` / `ValueError` for a malformed config dict. |
 | `get_navigation()` | Get current navigation data (non-blocking). |
-| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. Returns `None` once the waits are stopped by `shutdown()`, `close()` or `stop_on_signals()`. |
+| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. Returns `None` once the waits are stopped by `shutdown()` or `close()`. |
 | `name()` | Get detected HAT name (e.g. `'L1/L5 GNSS TIME HAT'`). |
 | `soft_reset_hot_start()` | Software reset — preserves almanac/ephemeris for fast TTFF. |
 | `hard_reset_cold_start()` | Hardware reset — full cold start. |
@@ -117,7 +117,7 @@ config = {
 | `timepulse()` | Block until next 1PPS interrupt. Releases GIL. Returns `True`, or `False` when the timepulse is not enabled or the waits are stopped. |
 | `start_forward_for_gpsd()` | Start NMEA forwarding to a virtual TTY for gpsd. |
 | `stop_forward_for_gpsd()` | Stop NMEA forwarding. |
-| `join_forward_for_gpsd()` | Block until forwarding is stopped by `stop_forward_for_gpsd()`, `shutdown()`, a signal after `stop_on_signals()`, or `close()`. Releases GIL. |
+| `join_forward_for_gpsd()` | Block until forwarding is stopped by `stop_forward_for_gpsd()`, `shutdown()`, or `close()`. Releases GIL. |
 | `get_gpsd_device_path()` | Get the virtual TTY path (e.g. `/dev/pts/3`). Returns `None` if not active. |
 | `rtk_get_full_corrections()` | Get full RTCM3 correction frames from RTK base. Returns `list[bytes]`, empty until the base has data. Raises `RuntimeError` if the HAT is not an RTK base. |
 | `rtk_get_tiny_corrections()` | Get compact RTCM3 correction frames from RTK base. Returns `list[bytes]`, empty until the base has data. Raises `RuntimeError` if the HAT is not an RTK base. |
@@ -129,7 +129,6 @@ config = {
 | `disable_time_mark_trigger()` | Disable EXTINT trigger. |
 | `trigger_time_mark(edge)` | Trigger a time mark event. Optional `TimeMarkTriggerEdge` arg (default `TOGGLE`). |
 | `shutdown()` | Stop all waits and gpsd forwarding for good: the waits return `None` / `False` and `start()` returns `False` from then on. Releases GIL. Thread-safe and idempotent; call it from a thread waiting in `signal.sigwait()`, not from a signal handler. Does not close the HAT: join the threads that use it, then `close()`. |
-| `stop_on_signals()` | Make SIGINT and SIGTERM stop the waits for good instead of raising `KeyboardInterrupt`, until the HAT is closed. A second signal terminates the process. |
 | `close()` | Stop the waits and gpsd forwarding and release the HAT. Threads blocked in `wait_and_get_fresh_*()` or `timepulse()` get `None` / `False`. Idempotent. |
 | `closed` | `True` once `close()` has been called. Any other method then raises `RuntimeError`. |
 
