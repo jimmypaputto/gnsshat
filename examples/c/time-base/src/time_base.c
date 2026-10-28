@@ -13,25 +13,14 @@
  * by entering a "time fix" mode (TimeOnlyFix).
  */
 
+#include <pthread.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
 #include <jimmypaputto/GnssHat.h>
 
-
-static atomic_bool running = true;
-
-void signal_handler(int sig)
-{
-    if (sig == SIGINT)
-    {
-        printf("\n\nReceived SIGINT, shutting down gracefully...\n");
-        atomic_store(&running, false);
-    }
-}
 
 jp_gnss_gnss_config_t create_survey_in_config()
 {
@@ -111,10 +100,39 @@ jp_gnss_gnss_config_t create_fixed_position_ecef_config()
     return config;
 }
 
+static void termination_signals(sigset_t* signals)
+{
+    sigemptyset(signals);
+    sigaddset(signals, SIGINT);
+    sigaddset(signals, SIGTERM);
+}
+
+static void* wait_for_signal(void* gnss)
+{
+    sigset_t signals;
+    termination_signals(&signals);
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(gnss);
+    return NULL;
+}
+
+/* SIGINT and SIGTERM make the new thread call jp_gnss_hat_shutdown(), which
+ * ends the waits in main. */
+static bool signals_handler(jp_gnss_hat_t* gnss, pthread_t* thread)
+{
+    sigset_t signals;
+    termination_signals(&signals);
+
+    /* Blocks the signals in the calling thread (main); the new thread
+     * inherits the mask. Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+
+    return pthread_create(thread, NULL, wait_for_signal, gnss) == 0;
+}
+
 int main(void)
 {
-    signal(SIGINT, signal_handler);
-
     jp_gnss_hat_t* gnss = jp_gnss_hat_create();
     if (!gnss)
     {
@@ -138,13 +156,17 @@ int main(void)
     printf("GNSS started with time base configuration (Survey-In mode).\r\n");
     printf("Waiting for TimeOnlyFix...\r\n\n");
 
-    jp_gnss_navigation_t navigation;
-
-    while (atomic_load(&running))
+    pthread_t signals_interrupt;
+    if (!signals_handler(gnss, &signals_interrupt))
     {
-        if (!jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
-            continue;
+        printf("Failed to start the signal thread\r\n");
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
 
+    jp_gnss_navigation_t navigation;
+    while (jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
+    {
         const char* time_str = jp_gnss_utc_time_iso8601(&navigation.pvt);
         const char* fix_type_str =
             jp_gnss_fix_type_to_string(navigation.pvt.fix_type);
@@ -157,6 +179,11 @@ int main(void)
             navigation.pvt.longitude,
             navigation.pvt.altitude_msl);
     }
+
+    /* Wakes sigwait if the loop ends without a signal (e.g. a break added
+     * to the loop or a future device error). */
+    pthread_kill(signals_interrupt, SIGINT);
+    pthread_join(signals_interrupt, NULL);
 
     jp_gnss_hat_destroy(gnss);
     printf("Application terminated gracefully\n");

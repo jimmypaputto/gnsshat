@@ -205,13 +205,25 @@ while True:
 ### C
 
 ```c
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <jimmypaputto/GnssHat.h>
+
+static sigset_t signals;  /* SIGINT and SIGTERM */
+
+/* Ctrl+C / SIGTERM call jp_gnss_hat_shutdown(), which ends the loop in main. */
+static void* signals_handler(void* hat)
+{
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(hat);
+    return NULL;
+}
 
 int main(void)
 {
     jp_gnss_hat_t* hat = jp_gnss_hat_create();
-    jp_gnss_hat_stop_on_signals(hat);  /* Ctrl+C ends the loop below */
     jp_gnss_hat_soft_reset_hot_start(hat);
 
     jp_gnss_gnss_config_t config;
@@ -230,6 +242,15 @@ int main(void)
         return -1;
     }
 
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+    /* Blocks the signals in main; the new thread inherits the mask.
+     * Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+    pthread_t signals_interrupt;
+    pthread_create(&signals_interrupt, NULL, signals_handler, hat);
+
     jp_gnss_navigation_t nav;
     while (jp_gnss_hat_wait_and_get_fresh_navigation(hat, &nav))
     {
@@ -238,6 +259,9 @@ int main(void)
             nav.pvt.altitude, nav.pvt.visible_satellites);
     }
 
+    /* Wakes sigwait if the loop ends without a signal */
+    pthread_kill(signals_interrupt, SIGINT);
+    pthread_join(signals_interrupt, NULL);
     jp_gnss_hat_destroy(hat);
     return 0;
 }

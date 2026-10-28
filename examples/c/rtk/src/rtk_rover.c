@@ -13,26 +13,13 @@
 
 #include <pthread.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include <jimmypaputto/GnssHat.h>
 
-
-static atomic_bool running = true;
-
-void signal_handler(int sig)
-{
-    if (sig == SIGINT)
-    {
-        printf("\n\nReceived SIGINT, shutting down gracefully...\n");
-        atomic_store(&running, false);
-    }
-}
 
 jp_gnss_gnss_config_t create_config()
 {
@@ -59,53 +46,56 @@ jp_gnss_gnss_config_t create_config()
 }
 
 
-typedef struct
-{
-    jp_gnss_hat_t* gnss;
-    jp_gnss_ntrip_client_t* client;
-} corrections_ctx_t;
-
 /*
- * Correction application thread.
- *
- * Receives RTCM3 frames from the NTRIP client and forwards
- * them to the receiver via jp_gnss_rtk_apply_corrections().
+ * Forwards the RTCM3 frames received from the NTRIP client since the last
+ * epoch to the receiver via jp_gnss_rtk_apply_corrections(). Called once per
+ * navigation epoch from main, so no extra thread has to be stopped.
  */
-void* corrections_thread(void* arg)
+static void apply_corrections(jp_gnss_hat_t* gnss,
+    jp_gnss_ntrip_client_t* client)
 {
-    corrections_ctx_t* ctx = (corrections_ctx_t*)arg;
-
-    while (atomic_load(&running))
+    jp_gnss_rtcm3_frame_t* frames = NULL;
+    uint32_t count = jp_gnss_ntrip_client_receive(client, &frames);
+    if (count > 0 && frames)
     {
-        if (!jp_gnss_ntrip_client_is_connected(ctx->client))
-        {
-            sleep(1);
-            continue;
-        }
-
-        jp_gnss_rtcm3_frame_t* frames = NULL;
-        uint32_t count = jp_gnss_ntrip_client_receive(
-            ctx->client, &frames);
-
-        if (count > 0 && frames)
-        {
-            jp_gnss_rtk_apply_corrections(ctx->gnss, frames, count);
-            jp_gnss_ntrip_client_free_frames(frames, count);
-        }
-        else
-        {
-            usleep(100000); /* 100ms */
-        }
+        jp_gnss_rtk_apply_corrections(gnss, frames, count);
+        jp_gnss_ntrip_client_free_frames(frames, count);
     }
+}
 
+static void termination_signals(sigset_t* signals)
+{
+    sigemptyset(signals);
+    sigaddset(signals, SIGINT);
+    sigaddset(signals, SIGTERM);
+}
+
+static void* wait_for_signal(void* gnss)
+{
+    sigset_t signals;
+    termination_signals(&signals);
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(gnss);
     return NULL;
 }
 
+/* SIGINT and SIGTERM make the new thread call jp_gnss_hat_shutdown(), which
+ * ends the waits in main. */
+static bool signals_handler(jp_gnss_hat_t* gnss, pthread_t* thread)
+{
+    sigset_t signals;
+    termination_signals(&signals);
+
+    /* Blocks the signals in the calling thread (main); the new thread
+     * inherits the mask. Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+
+    return pthread_create(thread, NULL, wait_for_signal, gnss) == 0;
+}
 
 int main(int argc, char* argv[])
 {
-    signal(SIGINT, signal_handler);
-
     /* Defaults */
     const char* host = "localhost";
     uint16_t port = 2101;
@@ -159,17 +149,20 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    corrections_ctx_t ctx = { .gnss = gnss, .client = client };
-
-    pthread_t corr_thread;
-    pthread_create(&corr_thread, NULL, corrections_thread, &ctx);
+    pthread_t signals_interrupt;
+    if (!signals_handler(gnss, &signals_interrupt))
+    {
+        printf("Failed to start the signal thread\r\n");
+        jp_gnss_ntrip_client_disconnect(client);
+        jp_gnss_ntrip_client_destroy(client);
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
 
     jp_gnss_navigation_t navigation;
-
-    while (atomic_load(&running))
+    while (jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
     {
-        if (!jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
-            continue;
+        apply_corrections(gnss, client);
 
         printf("[%s] %s (%s)  %.6f, %.6f  alt=%.1fm  sats=%d\r\n",
             jp_gnss_utc_time_iso8601(&navigation.pvt),
@@ -180,7 +173,11 @@ int main(int argc, char* argv[])
         );
     }
 
-    pthread_join(corr_thread, NULL);
+    /* Wakes sigwait if the loop ends without a signal (e.g. a break added
+     * to the loop or a future device error). */
+    pthread_kill(signals_interrupt, SIGINT);
+    pthread_join(signals_interrupt, NULL);
+
     jp_gnss_ntrip_client_disconnect(client);
     jp_gnss_ntrip_client_destroy(client);
     jp_gnss_hat_destroy(gnss);
