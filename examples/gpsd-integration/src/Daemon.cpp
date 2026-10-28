@@ -2,11 +2,31 @@
  * Jimmy Paputto 2025
  */
 
+#include <csignal>
 #include <cstdio>
 #include <memory>
+#include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
+
+std::thread signalsHandler(JimmyPaputto::IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
 
 auto main() -> int
 {
@@ -16,8 +36,6 @@ auto main() -> int
 
     std::unique_ptr<JimmyPaputto::IGnssHat> ubxHat(
         JimmyPaputto::IGnssHat::create());
-    // Ctrl+C and systemctl stop end joinForwardForGpsd() below
-    ubxHat->stopOnSignals();
 
     JimmyPaputto::GnssConfig config;
     config.measurementRate_Hz = 1;
@@ -60,7 +78,14 @@ auto main() -> int
     printf("\tgpsmon  # To monitor gpsd and PPS\r\n");
     printf("Daemon is running... Press Ctrl+C to stop\r\n");
 
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
+    // Ctrl+C and systemctl stop end it: shutdown() stops the forwarding.
     ubxHat->joinForwardForGpsd();
+
+    // Wakes sigwait if forwarding stops without a signal.
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
 
     // The destructor removes the virtual device and releases the HAT
     printf("\nDaemon stopped\r\n");

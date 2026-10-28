@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -120,6 +121,24 @@ void printFrame(const std::vector<uint8_t>& frame, const std::string& time)
     printf("\r\n");
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main(int argc, char* argv[]) -> int
 {
     uint16_t port = 2101;
@@ -134,7 +153,6 @@ auto main(int argc, char* argv[]) -> int
     }
 
     std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
-    ubxHat->stopOnSignals();
 
     // ubxHat->softResetUbloxSom_HotStart();
     ubxHat->hardResetUbloxSom_ColdStart();
@@ -152,6 +170,8 @@ auto main(int argc, char* argv[]) -> int
         printf("Failed to start NTRIP caster\r\n");
         return -1;
     }
+
+    auto signalsInterrupt = signalsHandler(*ubxHat);
 
     while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
     {
@@ -190,6 +210,10 @@ auto main(int argc, char* argv[]) -> int
         }
     }
 
+    // Wakes sigwait if the loop ends without a signal (e.g. a break added
+    // to the loop or a future device error).
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
     caster.stop();
     return 0;
 }

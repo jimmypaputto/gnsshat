@@ -106,16 +106,36 @@ For most recent rpi images that would be version 2.
 ### C++
 
 ```cpp
+#include <csignal>
 #include <cstdio>
 #include <memory>
+#include <thread>
 #include <jimmypaputto/GnssHat.hpp>
 
 using namespace JimmyPaputto;
 
+// Ctrl+C / SIGTERM call hat.shutdown(), which ends the wait loop in main.
+std::thread signalsHandler(IGnssHat& hat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in main; the new thread inherits the mask.
+    // Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&hat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        hat.shutdown();
+    });
+}
+
 auto main() -> int
 {
     std::unique_ptr<IGnssHat> hat(IGnssHat::create());
-    hat->stopOnSignals();  // Ctrl+C ends the loop below
     hat->softResetUbloxSom_HotStart();
 
     GnssConfig config {
@@ -138,12 +158,18 @@ auto main() -> int
         return -1;
     }
 
+    auto signalsInterrupt = signalsHandler(*hat);
+
     while (const auto nav = hat->waitAndGetFreshNavigation())
     {
         printf("%.6f, %.6f  alt=%.1fm  sats=%d\n",
             nav->pvt.latitude, nav->pvt.longitude,
             nav->pvt.altitude, nav->pvt.visibleSatellites);
     }
+
+    // Wakes sigwait if the loop ends without a signal
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
     return 0;  // the destructor stops and releases everything
 }
 ```

@@ -12,6 +12,7 @@
  */
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -76,6 +77,24 @@ void correctionsThread(std::stop_token stoken, IGnssHat* hat,
 }
 
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main(int argc, char* argv[]) -> int
 {
     // Defaults
@@ -95,7 +114,6 @@ auto main(int argc, char* argv[]) -> int
     }
 
     std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
-    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createConfig());
     if (!isStartupDone)
@@ -113,6 +131,9 @@ auto main(int argc, char* argv[]) -> int
         return -1;
     }
 
+    // Before corrThread: it must inherit the blocked signals.
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
     // Declared last, so it is stopped and joined before the client and the
     // HAT it uses are destroyed.
     std::jthread corrThread(correctionsThread, ubxHat.get(), &client);
@@ -129,5 +150,9 @@ auto main(int argc, char* argv[]) -> int
         );
     }
 
+    // Wakes sigwait if the loop ends without a signal (e.g. a break added
+    // to the loop or a future device error).
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
     return 0;
 }

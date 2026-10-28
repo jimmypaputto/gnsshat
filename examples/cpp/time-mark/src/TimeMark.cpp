@@ -2,7 +2,7 @@
  * Jimmy Paputto 2026
  */
 
-#include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <memory>
 #include <thread>
@@ -82,10 +82,27 @@ GnssConfig createConfig()
     };
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
     std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
-    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
 
     const bool isStartupDone = ubxHat->start(createConfig());
@@ -99,21 +116,30 @@ auto main() -> int
     ubxHat->enableTimeMarkTrigger();
     printf("TimeMark trigger enabled, toggling EXTINT every 5s\r\n\r\n");
 
-    // Declared after the HAT, so it is stopped and joined before the HAT is
-    // destroyed.
-    std::jthread toggleThread([&ubxHat](std::stop_token stop) {
-        while (!stop.stop_requested())
+    // Before toggleThread: it must inherit the blocked signals.
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
+    // Toggles EXTINT every 5 navigation epochs (5 s at 1 Hz) and ends when
+    // shutdown() stops its wait.
+    std::thread toggleThread([&ubxHat] {
+        int epoch = 0;
+        while (ubxHat->waitAndGetFreshNavigation())
         {
+            if (epoch++ % 5 != 0)
+                continue;
             ubxHat->triggerTimeMark();
             printf("[EXTINT] toggled\r\n");
-
-            for (int i = 0; i < 50 && !stop.stop_requested(); ++i)
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     });
 
     while (const auto timeMark = ubxHat->waitAndGetFreshTimeMark())
         printTimeMark(*timeMark);
+
+    // Wakes sigwait if the loop ends without a signal (e.g. a break added
+    // to the loop or a future device error).
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
+    toggleThread.join();
 
     printf("Exiting...\r\n");
     return 0;

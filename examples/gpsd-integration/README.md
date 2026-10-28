@@ -25,20 +25,31 @@ The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. T
 
 ```cpp
 std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
-ubxHat->stopOnSignals();
 ubxHat->start(config);
 
 // Start NMEA forwarding in background
 ubxHat->startForwardForGpsd();
 printf("gpsd device: %s\n", ubxHat->getGpsdDevicePath().c_str());
 
+// Blocks SIGINT/SIGTERM in main and starts a thread that takes them with
+// sigwait() and calls ubxHat->shutdown() (see GpsdInteractive.cpp)
+auto signalsInterrupt = signalsHandler(*ubxHat);
+
 // Your app keeps running — navigation and gpsd work simultaneously
 while (const auto nav = ubxHat->waitAndGetFreshNavigation())
 {
     // use *nav...
 }
-// Ctrl+C ends the loop; the destructor stops the forwarder
+
+// Ctrl+C ends the loop; wake sigwait in case something else did
+pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+signalsInterrupt.join();
+// the destructor stops the forwarder
 ```
+
+The library never handles signals itself, so the example owns Ctrl+C and
+`systemctl stop`. `shutdown()` is thread-safe but not async-signal-safe, which is
+why it runs in the `sigwait()` thread and not in a signal handler.
 
 Build and run:
 
@@ -60,10 +71,12 @@ Key API calls:
 - `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
 - `getGpsdDevicePath()` — returns path to virtual device (`/dev/jimmypaputto/gnss`)
 - `stopForwardForGpsd()` — stops forwarding, removes virtual device
+- `shutdown()` — stops all waits and forwarding for good; the daemon calls it
+  from its `sigwait()` thread on Ctrl+C / SIGTERM
 - `joinForwardForGpsd()` — blocks until forwarding is stopped: by
-  `stopForwardForGpsd()`, by Ctrl+C / SIGTERM after `stopOnSignals()`, or by
-  destroying the HAT. Cleanup does not need it — the destructor stops the
-  forwarder and removes the virtual device
+  `stopForwardForGpsd()`, by `shutdown()`, or by destroying the HAT. Cleanup
+  does not need it — the destructor stops the forwarder and removes the
+  virtual device
 
 ## Daemon (jpgnss2gpsd-bridge)
 

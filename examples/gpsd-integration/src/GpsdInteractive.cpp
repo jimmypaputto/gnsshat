@@ -2,8 +2,10 @@
  * Jimmy Paputto 2025
  */
 
+#include <csignal>
 #include <cstdio>
 #include <memory>
+#include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
@@ -20,10 +22,27 @@ void print(const Navigation& navigation)
            navigation.pvt.altitude);
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
     std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
-    ubxHat->stopOnSignals();
 
     GnssConfig config;
     config.measurementRate_Hz = 1;
@@ -60,11 +79,18 @@ auto main() -> int
         return 1;
     }
 
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
     // You can do whatever you want here, nmea forwarder is running
     // in background without collisions with your application,
     // you can use gpsd simultaneously.
     while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
         print(*navigation);
+
+    // Wakes sigwait if the loop ends without a signal (e.g. a break added
+    // to the loop or a future device error).
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
 
     printf("\nShutting down...\r\n");
     return 0;  // the destructor stops the forwarder and removes its device

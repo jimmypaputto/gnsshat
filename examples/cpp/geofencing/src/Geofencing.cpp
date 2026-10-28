@@ -2,8 +2,10 @@
  * Jimmy Paputto 2025
  */
 
+#include <csignal>
 #include <cstdio>
 #include <memory>
+#include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
@@ -119,10 +121,27 @@ void print(const Geofencing& geofencing)
     }
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
     std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
-    ubxHat->stopOnSignals();
     ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createDefaultConfig());
     if (!isStartupDone)
@@ -133,8 +152,14 @@ auto main() -> int
 
     printf("Startup done, ublox configured\r\n");
 
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
     while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
         print(navigation->geofencing);
 
+    // Wakes sigwait if the loop ends without a signal (e.g. a break added
+    // to the loop or a future device error).
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
     return 0;
 }

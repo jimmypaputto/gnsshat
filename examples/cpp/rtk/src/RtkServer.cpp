@@ -13,6 +13,7 @@
  */
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <memory>
 #include <thread>
@@ -21,6 +22,24 @@
 #include <jimmypaputto/ntrip/NtripServer.hpp>
 
 using namespace JimmyPaputto;
+
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
 
 int main(int argc, char* argv[])
 {
@@ -61,7 +80,6 @@ int main(int argc, char* argv[])
     };
 
     std::unique_ptr<IGnssHat> hat(IGnssHat::create());
-    hat->stopOnSignals();
     hat->hardResetUbloxSom_ColdStart();
     if (!hat->start(config))
     {
@@ -86,6 +104,8 @@ int main(int argc, char* argv[])
     std::printf("Connected to %s:%u/%s — pushing corrections\n",
                 host, port, mount);
 
+    auto signalsInterrupt = signalsHandler(*hat);
+
     // ── Main loop ───────────────────────────────────────────────────
     while (const auto nav = hat->waitAndGetFreshNavigation())
     {
@@ -102,6 +122,11 @@ int main(int argc, char* argv[])
 
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+
+    // Wakes sigwait if the loop ends without a signal (e.g. a break added
+    // to the loop or a future device error).
+    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+    signalsInterrupt.join();
 
     auto stats = server.getStats();
     std::printf("\nSession: %llu bytes TX, %llu frames, %.1fs uptime\n",
