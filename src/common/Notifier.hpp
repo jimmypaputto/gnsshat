@@ -41,7 +41,8 @@ public:
         return true;
     }
 
-    // Returns false as soon as either token is stopped.
+    // Returns false as soon as either token is stopped, even with a
+    // notification pending; that notification is left for the next wait.
     bool wait(std::stop_token stoken, std::stop_token other)
     {
         // Registered before mtx is taken: for an already stopped token the
@@ -54,7 +55,7 @@ public:
         std::unique_lock lock(mtx);
         const bool woken = cv.wait(lock, stoken,
             [this, &other]{ return ready || other.stop_requested(); });
-        if (!woken || other.stop_requested())
+        if (!woken || stoken.stop_requested() || other.stop_requested())
             return false;
         ready = false;
         return true;

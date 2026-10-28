@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <future>
+#include <latch>
 #include <stop_token>
 #include <thread>
 
@@ -48,13 +51,87 @@ TEST(Notifier, EitherTokenEndsTheWait)
 
 TEST(Notifier, StoppedTokenKeepsPendingNotification)
 {
+    for (const bool stopOwn : { true, false })
+    {
+        SCOPED_TRACE(stopOwn ? "instance token" : "caller token");
+        Notifier notifier;
+        notifier.notify();
+
+        std::stop_source own, other;
+        (stopOwn ? own : other).request_stop();
+        const bool consumed = notifier.wait(own.get_token(), other.get_token());
+        EXPECT_FALSE(consumed);
+
+        if (!consumed)
+        {
+            EXPECT_TRUE(notifier.wait({}, {}));
+        }
+    }
+}
+
+TEST(Notifier, StoppedTokensRejectLaterNotifications)
+{
+    for (const bool stopOwn : { true, false })
+    {
+        SCOPED_TRACE(stopOwn ? "instance token" : "caller token");
+        Notifier notifier;
+        std::stop_source own, other;
+        (stopOwn ? own : other).request_stop();
+        for (int i = 0; i < 20; ++i)
+        {
+            notifier.notify();
+            EXPECT_FALSE(notifier.wait(own.get_token(), other.get_token()));
+        }
+    }
+}
+
+TEST(Notifier, CancellingOneCallerLeavesAnotherWaitUsable)
+{
     Notifier notifier;
+    std::stop_source own;
+    std::latch entered(2);
+    std::promise<bool> firstResult, secondResult;
+    auto firstFuture = firstResult.get_future();
+    auto secondFuture = secondResult.get_future();
+    std::jthread first([&](std::stop_token stop) {
+        entered.count_down();
+        firstResult.set_value(notifier.wait(own.get_token(), stop));
+    });
+    std::jthread second([&](std::stop_token stop) {
+        entered.count_down();
+        secondResult.set_value(notifier.wait(own.get_token(), stop));
+    });
+
+    entered.wait();
+    first.request_stop();
+    first.join();
+    EXPECT_FALSE(firstFuture.get());
+    EXPECT_EQ(secondFuture.wait_for(0ms), std::future_status::timeout);
+
     notifier.notify();
+    second.join();
+    EXPECT_TRUE(secondFuture.get());
+}
 
-    std::stop_source stopped;
-    stopped.request_stop();
-    EXPECT_FALSE(notifier.wait({}, stopped.get_token()));
+TEST(Notifier, StoppingInstanceEndsAllWaits)
+{
+    Notifier notifier;
+    std::stop_source own;
+    std::latch entered(4);
+    std::array<bool, 4> results{true, true, true, true};
+    std::array<std::jthread, 4> waiters;
+    for (size_t i = 0; i < waiters.size(); ++i)
+    {
+        waiters[i] = std::jthread([&, i](std::stop_token stop) {
+            entered.count_down();
+            results[i] = notifier.wait(own.get_token(), stop);
+        });
+    }
 
-    // Would block for good if the stopped wait had consumed it.
-    EXPECT_TRUE(notifier.wait({}, {}));
+    entered.wait();
+    own.request_stop();
+    for (auto& waiter : waiters)
+        waiter.join();
+    for (const bool result : results)
+        EXPECT_FALSE(result);
 }
