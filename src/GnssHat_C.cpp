@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <new>
 #include <optional>
-#include <stop_token>
 
 
 using namespace JimmyPaputto;
@@ -619,8 +618,6 @@ jp_gnss_time_mark_t convert_time_mark(const TimeMark& cpp_tm)
 struct jp_gnss_hat
 {
     IGnssHat* instance;
-    // Passed to every wait, so that jp_gnss_hat_shutdown() can end them.
-    std::stop_source stop;
 };
 
 extern "C"
@@ -638,8 +635,7 @@ void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat)
     if (!hat || !hat->instance)
         return;
 
-    hat->stop.request_stop();
-    hat->instance->stopForwardForGpsd();
+    hat->instance->shutdown();
 }
 
 bool jp_gnss_hat_stop_on_signals(jp_gnss_hat_t* hat)
@@ -689,7 +685,7 @@ bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
         return false;
 
     const auto fresh =
-        hat->instance->waitAndGetFreshNavigation(hat->stop.get_token());
+        hat->instance->waitAndGetFreshNavigation();
     if (!fresh)
         return false;
 
@@ -984,7 +980,7 @@ bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
     if (!hat || !hat->instance)
         return false;
 
-    return hat->instance->timepulse(hat->stop.get_token());
+    return hat->instance->timepulse();
 }
 
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
@@ -1192,7 +1188,7 @@ bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
         return false;
 
     const auto fresh =
-        hat->instance->waitAndGetFreshTimeMark(hat->stop.get_token());
+        hat->instance->waitAndGetFreshTimeMark();
     if (!fresh)
         return false;
 

@@ -112,6 +112,7 @@ public:
     void disableTimeMarkTrigger() override;
     void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
+    void shutdown() override;
     bool stopOnSignals() override;
 
     SystemHealth systemHealth() const override;
@@ -143,8 +144,6 @@ protected:
         GnssHat& hat_;
     };
 
-    // Stops every wait and gpsd forwarding for good.
-    void shutdown();
     // First step of every destructor in the hierarchy, before any member is
     // destroyed.
     void shutdownAndWaitForBlockingCalls();
@@ -175,10 +174,6 @@ protected:
     std::atomic<bool> timepulseEnabled_{false};
 
 private:
-    // Whatever stops stopSource_ also stops gpsd forwarding, which wakes
-    // joinForwardForGpsd().
-    std::stop_callback<std::function<void()>> stopForwardingOnStop_{
-        stopSource_.get_token(), [this] { stopForwardForGpsd(); }};
     std::unique_ptr<SignalStopRegistration> signalStop_;
     std::mutex blockingCallsMtx_;
     std::condition_variable blockingCallsCv_;
@@ -496,6 +491,11 @@ bool validateConfig(const GnssConfig& config)
 template<class StartupStrategy, class RunStrategy>
 bool GnssHat::start(const GnssConfig& config)
 {
+    if (stopSource_.stop_requested())
+    {
+        fprintf(stderr, "[GNSS] HAT is shut down; create a new instance\r\n");
+        return false;
+    }
     if (!validateConfig<StartupStrategy>(config))
     {
         fprintf(stderr, "[GNSS] Invalid config\r\n");
@@ -764,6 +764,7 @@ bool GnssHat::stopOnSignals()
 void GnssHat::shutdown()
 {
     stopSource_.request_stop();
+    stopForwardForGpsd();
 }
 
 void GnssHat::shutdownAndWaitForBlockingCalls()

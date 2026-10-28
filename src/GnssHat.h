@@ -553,7 +553,10 @@ jp_gnss_hat_t* jp_gnss_hat_create(void);
 /* Stops the waits (jp_gnss_hat_wait_and_get_fresh_*, jp_gnss_hat_timepulse)
  * for good, so they return false now and later, and stops gpsd forwarding,
  * which wakes jp_gnss_hat_join_forward_for_gpsd. Use it to end worker loops
- * and join them before jp_gnss_hat_destroy(). */
+ * and join them before jp_gnss_hat_destroy(). Idempotent. Thread-safe, but
+ * NOT async-signal-safe: never call it from a signal handler; call it from a
+ * normal thread, e.g. one waiting in sigwait(). The handle cannot be started
+ * again; create a new one. */
 void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat);
 /* SIGINT and SIGTERM stop the waits for good, as jp_gnss_hat_shutdown()
  * does. Replaces the process' handlers of these signals until the handle is

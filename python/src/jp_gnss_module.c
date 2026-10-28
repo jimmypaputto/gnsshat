@@ -3586,6 +3586,13 @@ static PyObject* GnssHat_trigger_time_mark(GnssHat* self, PyObject* args)
     Py_RETURN_NONE;
 }
 
+static PyObject* GnssHat_shutdown(GnssHat* self, PyObject* args)
+{
+    CHECK_HAT(self);
+    HAT_CALL_NOGIL(self, jp_gnss_hat_shutdown(self->hat));
+    Py_RETURN_NONE;
+}
+
 static PyObject* GnssHat_stop_on_signals(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
@@ -3656,8 +3663,8 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_wait_and_get_fresh_navigation,
         METH_NOARGS,
         "Block until the next navigation epoch. Releases the GIL. Returns "
-        "Navigation, or None once the waits are stopped by close() or "
-        "stop_on_signals()."
+        "Navigation, or None once the waits are stopped by shutdown(), "
+        "close() or stop_on_signals()."
     },
     {
         "enable_timepulse",
@@ -3688,7 +3695,8 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_join_forward_for_gpsd,
         METH_NOARGS,
         "Block until GPSD forwarding is stopped by stop_forward_for_gpsd(), "
-        "a signal after stop_on_signals(), or close(). Releases the GIL."
+        "shutdown(), a signal after stop_on_signals(), or close(). Releases "
+        "the GIL."
     },
     {
         "get_gpsd_device_path",
@@ -3793,6 +3801,16 @@ static PyMethodDef GnssHat_methods[] = {
         "Stop the waits and gpsd forwarding and release the HAT. Threads "
         "blocked in wait_and_get_fresh_*() or timepulse() get None or False. "
         "Safe to call more than once."
+    },
+    {
+        "shutdown",
+        (PyCFunction)GnssHat_shutdown,
+        METH_NOARGS,
+        "Stop all waits and GPSD forwarding for good: the waits return "
+        "None / False and start() fails from now on. Releases the GIL. "
+        "Idempotent and thread-safe; call it from a thread waiting in "
+        "signal.sigwait(), not from a signal handler. Does not close the "
+        "HAT: join the threads that use it, then close()."
     },
     {
         "stop_on_signals",

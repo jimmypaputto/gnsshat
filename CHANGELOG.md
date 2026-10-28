@@ -14,9 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   destructors clean up. A second signal terminates the process at once
 - The C++ waits take an optional `std::stop_token`, which ends only that wait
   and leaves the HAT usable, for worker threads and ROS 2 lifecycle nodes
-- `jp_gnss_hat_shutdown()` wakes threads blocked in the C wait, timepulse and
-  gpsd join calls and makes the waits return `false`, so worker loops end and
-  can be joined before `jp_gnss_hat_destroy()`
+- `shutdown()` (C `jp_gnss_hat_shutdown()`, Python `shutdown()`) stops every
+  wait and gpsd forwarding of a HAT for good, so worker loops end and can be
+  joined before the HAT is deleted. It is thread-safe but not
+  async-signal-safe: call it from a thread waiting in `sigwait()`
 - Python `GnssHat.close()` and `GnssHat.closed`, so the HAT can be released
   without a `with` block. Leaving a `with` block calls `close()`
 

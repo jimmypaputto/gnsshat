@@ -34,8 +34,8 @@ public:
 
     virtual Navigation navigation() const = 0;
     // Blocks until the next navigation epoch. Returns std::nullopt once the
-    // wait is stopped: by `stop`, by a signal after stopOnSignals(), or by
-    // the destruction of this instance.
+    // wait is stopped: by `stop`, by shutdown(), by a signal after
+    // stopOnSignals(), or by the destruction of this instance.
     virtual std::optional<Navigation> waitAndGetFreshNavigation(
         std::stop_token stop = {}) = 0;
 
@@ -46,8 +46,9 @@ public:
 
     virtual bool startForwardForGpsd() = 0;
     virtual void stopForwardForGpsd() = 0;
-    // Blocks until gpsd forwarding is stopped: by stopForwardForGpsd(), by a
-    // signal after stopOnSignals(), or by the destruction of this instance.
+    // Blocks until gpsd forwarding is stopped: by stopForwardForGpsd(), by
+    // shutdown(), by a signal after stopOnSignals(), or by the destruction of
+    // this instance.
     // Useful to park the main thread of a gpsd-only daemon; cleanup does not
     // need it, because destruction stops the forwarder.
     virtual void joinForwardForGpsd() = 0;
@@ -75,6 +76,15 @@ public:
     virtual void disableTimeMarkTrigger() = 0;
     virtual void triggerTimeMark(
         ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
+
+    // Stops every wait of this instance and gpsd forwarding for good: the
+    // waits return std::nullopt / false now and later, joinForwardForGpsd()
+    // returns, and start() and startForwardForGpsd() fail. Idempotent.
+    // Thread-safe, but NOT async-signal-safe: never call it from a signal
+    // handler; call it from a normal thread, e.g. one waiting in sigwait().
+    // Releases nothing: join the threads that use the instance, then delete
+    // it. Create a new instance to start again.
+    virtual void shutdown() = 0;
 
     // SIGINT and SIGTERM stop every wait of this instance for good, so a loop
     // on the waits ends and destructors clean up. Replaces the process'
