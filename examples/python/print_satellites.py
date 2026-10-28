@@ -1,5 +1,8 @@
 # Jimmy Paputto 2026
 
+import signal
+import threading
+
 from jimmypaputto import gnsshat
 
 
@@ -85,6 +88,21 @@ def print_satellites(nav):
     print()
 
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+
 hat = gnsshat.GnssHat()
 hat.soft_reset_hot_start()
 is_startup_done = hat.start(create_config())
@@ -94,17 +112,17 @@ else:
     print("Failed to start GNSS HAT, exiting...")
     exit(1)
 
-while True:
-    try:
-        nav = hat.wait_and_get_fresh_navigation()
+signals_interrupt = signals_handler(hat)
+try:
+    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
         print("\033[2J\033[H", end="")  # clear terminal
         print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
         print()
         print_satellites(nav)
-
-    except KeyboardInterrupt:
-        print("Exiting...")
-        break
-    except Exception as e:
-        print(f"Error: {e}")
-        break
+finally:
+    # Wakes sigwait if the loop ends without a signal (e.g. a break added
+    # to the loop or an exception).
+    if signals_interrupt.is_alive():
+        signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+    signals_interrupt.join()
+print("Exiting...")

@@ -177,7 +177,25 @@ auto main() -> int
 ### Python
 
 ```python
+import signal
+import threading
+
 from jimmypaputto import gnsshat
+
+# Ctrl+C / SIGTERM call hat.shutdown(), which ends the wait loop below.
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in main; the new thread inherits the mask.
+    # Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
 
 hat = gnsshat.GnssHat()
 hat.soft_reset_hot_start()
@@ -197,9 +215,16 @@ if not hat.start(config):
     print("Failed to start GNSS")
     exit(1)
 
-while True:
-    nav = hat.wait_and_get_fresh_navigation()
-    print(nav)
+signals_interrupt = signals_handler(hat)
+try:
+    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+        print(nav)
+finally:
+    # Wakes sigwait if the loop ends without a signal
+    if signals_interrupt.is_alive():
+        signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+    signals_interrupt.join()
+hat.close()
 ```
 
 ### C

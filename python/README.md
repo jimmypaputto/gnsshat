@@ -138,12 +138,46 @@ the object cannot be reused afterwards, so create a new `GnssHat()` instead.
 
 ```python
 with gnsshat.GnssHat() as hat:
-    hat.stop_on_signals()  # Ctrl+C ends the loop below
     hat.start(config)
     while (nav := hat.wait_and_get_fresh_navigation()) is not None:
         print(nav.pvt.latitude, nav.pvt.longitude)
 # close() stopped GPSD forwarding, disabled timepulse and released the HAT
 ```
+
+To end such a loop on Ctrl+C or `systemctl stop`, block SIGINT and SIGTERM in
+the main thread and call `shutdown()` from a thread that takes them with
+`signal.sigwait()`. A Python signal handler would not run while the main thread
+waits inside the library, even though the wait releases the GIL:
+
+```python
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in main; the new thread inherits the mask.
+    # Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+with gnsshat.GnssHat() as hat:
+    hat.start(config)
+    signals_interrupt = signals_handler(hat)
+    try:
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print(nav.pvt.latitude, nav.pvt.longitude)
+    finally:
+        # Wakes sigwait if the loop ends without a signal; join before close()
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
+```
+
+All examples in [examples/python](../examples/python) follow this pattern.
 
 `close()` may be called while other threads use the HAT: it wakes the ones
 blocked in `wait_and_get_fresh_*()` or `timepulse()` (they get `None` /

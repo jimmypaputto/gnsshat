@@ -2,18 +2,8 @@
 
 import signal
 import threading
-import time
 
 from jimmypaputto import gnsshat
-
-
-running = True
-
-
-def signal_handler(sig, frame):
-    global running
-    print("\n\nReceived SIGINT, shutting down gracefully...")
-    running = False
 
 
 def create_config() -> dict:
@@ -35,32 +25,32 @@ def create_config() -> dict:
 
 
 def toggle_thread_func(hat):
-    while running:
-        hat.trigger_time_mark(gnsshat.TimeMarkTriggerEdge.TOGGLE)
-        print("[EXTINT] toggled")
+    # Toggles EXTINT every 5 navigation epochs (5 s at 1 Hz) and ends when
+    # shutdown() stops its wait.
+    epoch = 0
+    while hat.wait_and_get_fresh_navigation() is not None:
+        if epoch % 5 == 0:
+            hat.trigger_time_mark(gnsshat.TimeMarkTriggerEdge.TOGGLE)
+            print("[EXTINT] toggled")
+        epoch += 1
 
-        for _ in range(50):
-            if not running:
-                return
-            time.sleep(0.1)
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
 
-def time_mark_thread_func(hat):
-    while running:
-        try:
-            tm = hat.wait_and_get_fresh_time_mark()
-        except RuntimeError:
-            break
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
 
-        if not running:
-            return
-
-        print(tm)
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
 
 
 def main():
-    signal.signal(signal.SIGINT, signal_handler)
-
     with gnsshat.GnssHat() as hat:
         hat.soft_reset_hot_start()
 
@@ -73,21 +63,22 @@ def main():
         hat.enable_time_mark_trigger()
         print("TimeMark trigger enabled, toggling EXTINT every 5s\n")
 
-        toggle = threading.Thread(target=toggle_thread_func, args=(hat,), daemon=True)
-        tm_reader = threading.Thread(target=time_mark_thread_func, args=(hat,), daemon=True)
-
+        signals_interrupt = signals_handler(hat)
+        # After signals_handler(): the toggle thread inherits the blocked
+        # signals.
+        toggle = threading.Thread(target=toggle_thread_func, args=(hat,))
         toggle.start()
-        tm_reader.start()
-
-        while running:
-            time.sleep(0.1)
-
-        toggle.join()
-        hat.disable_time_mark_trigger()
-
-    # Leaving the with block closes the HAT, which wakes the reader blocked in
-    # wait_and_get_fresh_time_mark() with RuntimeError.
-    tm_reader.join()
+        try:
+            while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
+                print(tm)
+        finally:
+            # Wakes sigwait if the loop ends without a signal (e.g. a break added
+            # to the loop or an exception).
+            if signals_interrupt.is_alive():
+                signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+            signals_interrupt.join()
+            toggle.join()
+            hat.disable_time_mark_trigger()
 
     print("Exiting...")
     return 0

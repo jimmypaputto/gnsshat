@@ -14,6 +14,8 @@
 #
 
 import argparse
+import signal
+import threading
 
 from jimmypaputto import gnsshat
 
@@ -126,6 +128,21 @@ def print_rtcm3_frame(frame: bytes, time_str: str):
     print(f"[{time_str}] Frame {msg_id}: {len(frame)} bytes: {hex_str}")
 
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+
 def main():
     parser = argparse.ArgumentParser(description="RTK Base Station with NTRIP Caster")
     parser.add_argument("--port", type=int, default=2101,
@@ -151,9 +168,9 @@ def main():
     caster = gnsshat.NtripCaster("0.0.0.0", args.port, args.mountpoint)
     caster.start()
 
+    signals_interrupt = signals_handler(hat)
     try:
-        while True:
-            nav = hat.wait_and_get_fresh_navigation()
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
             fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
             if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
@@ -176,13 +193,12 @@ def main():
                 clients = caster.client_count()
                 if clients > 0:
                     print(f"Broadcasting to {clients} client(s)")
-
-    except KeyboardInterrupt:
-        print("\nStopping RTK Base monitoring...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
     finally:
+        # Wakes sigwait if the loop ends without a signal (e.g. a break added
+        # to the loop or an exception).
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
         caster.stop()
 
     print("Program finished")

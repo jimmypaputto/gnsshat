@@ -16,17 +16,24 @@
 import argparse
 import signal
 import sys
-import time
+import threading
 
 from jimmypaputto import gnsshat
 
 
-running = True
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
 
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
 
-def signal_handler(sig, frame):
-    global running
-    running = False
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
 
 
 def log_callback(level, message):
@@ -48,9 +55,6 @@ def main():
     parser.add_argument('--password', default='',
                         help='Source / upload password')
     args = parser.parse_args()
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
     # ── Initialise the GNSS HAT as Base ─────────────────────────────
     config = {
@@ -75,7 +79,10 @@ def main():
         },
     }
 
-    hat = gnsshat.GnssHat(config)
+    hat = gnsshat.GnssHat()
+    if not hat.start(config):
+        print('Failed to start GNSS', file=sys.stderr)
+        sys.exit(1)
 
     # ── Connect NtripServer to remote caster ────────────────────────
     server = gnsshat.NtripServer(
@@ -97,15 +104,18 @@ def main():
           f'/{args.mountpoint}')
 
     # ── Main loop: forward corrections ──────────────────────────────
-    while running:
-        try:
-            corrections = hat.rtk_get_full_corrections()
+    signals_interrupt = signals_handler(hat)
+    try:
+        while hat.wait_and_get_fresh_navigation() is not None:
+            corrections = hat.rtk_get_full_corrections()  # [] until ready
             if corrections:
                 server.feed(corrections)
-        except RuntimeError:
-            pass  # No corrections available yet
-
-        time.sleep(1.0)
+    finally:
+        # Wakes sigwait if the loop ends without a signal (e.g. a break added
+        # to the loop or an exception).
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
 
     # ── Cleanup ─────────────────────────────────────────────────────
     stats = server.get_stats()

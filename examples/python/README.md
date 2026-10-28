@@ -2,6 +2,15 @@
 
 This directory contains Python examples demonstrating how to use the GNSS HAT library.
 
+Ctrl+C and SIGTERM are handled the same way in every example: the main thread
+blocks both signals, a separate thread takes them with `signal.sigwait()` and
+calls `hat.shutdown()`, and the main thread's `wait_and_get_fresh_*()` /
+`timepulse()` loop then ends with `None` / `False`. A Python signal handler
+would only run once the native wait returns, so it could not end a wait on
+which no data arrives. The signal thread is joined before the HAT is closed;
+the `is_alive()` check before `signal.pthread_kill()` matters before Python
+3.13, where a finished thread's id may be reused.
+
 ## Prerequisites
 
 Make sure the Python module is installed:

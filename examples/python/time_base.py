@@ -14,6 +14,9 @@
 #   - Fixed Position (ECEF): Provide known ECEF coordinates
 #
 
+import signal
+import threading
+
 from jimmypaputto import gnsshat
 
 
@@ -111,6 +114,21 @@ def create_fixed_position_ecef_config() -> dict:
     }
 
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+
 def main():
     hat = gnsshat.GnssHat()
     hat.soft_reset_hot_start()
@@ -126,9 +144,9 @@ def main():
     print("GNSS started with time base configuration.")
     print("Waiting for TimeOnlyFix...\n")
 
+    signals_interrupt = signals_handler(hat)
     try:
-        while True:
-            nav = hat.wait_and_get_fresh_navigation()
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
             fix_type = gnsshat.FixType(nav.pvt.fix_type)
             time_iso = gnsshat.utc_time_iso8601(nav)
 
@@ -137,12 +155,12 @@ def main():
                   f"Lat: {nav.pvt.latitude:.7f}  "
                   f"Lon: {nav.pvt.longitude:.7f}  "
                   f"Alt: {nav.pvt.altitude_msl:.2f} m")
-
-    except KeyboardInterrupt:
-        print("\nStopping time base monitoring...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
+    finally:
+        # Wakes sigwait if the loop ends without a signal (e.g. a break added
+        # to the loop or an exception).
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
 
     print("Program finished")
     return 0

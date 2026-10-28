@@ -1,5 +1,8 @@
 # Jimmy Paputto 2025
 
+import signal
+import threading
+
 from jimmypaputto import gnsshat
 
 
@@ -66,6 +69,21 @@ def analyze_rf_block(rf_block):
               f"{JAMMING_THRESHOLD:.2f}%, jamming detected")
 
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+
 def main():
     ubx_hat = gnsshat.GnssHat()
     ubx_hat.soft_reset_hot_start()
@@ -79,20 +97,20 @@ def main():
     print("Monitoring for jamming and interference...")
     print("Press Ctrl+C to stop\n")
 
+    signals_interrupt = signals_handler(ubx_hat)
     try:
-        while True:
-            rf_blocks = ubx_hat.wait_and_get_fresh_navigation().rf_blocks
-            for rf_block in rf_blocks:
+        while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
+            for rf_block in navigation.rf_blocks:
                 print_rf_block(rf_block)
                 analyze_rf_block(rf_block)
                 print()
+    finally:
+        # Wakes sigwait if the loop ends without a signal (e.g. a break added
+        # to the loop or an exception).
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
 
-    except KeyboardInterrupt:
-        print("\nStopping jamming detection...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
-    
     print("Program finished")
     return 0
 

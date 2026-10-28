@@ -14,9 +14,7 @@
 
 import argparse
 import signal
-import sys
-import time
-from threading import Event, Thread
+import threading
 
 from jimmypaputto import gnsshat
 
@@ -42,6 +40,21 @@ def create_config() -> dict:
     }
 
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+
 class NtripRover:
     """
     RTK Rover that connects to an NTRIP caster, receives RTCM3
@@ -50,7 +63,6 @@ class NtripRover:
 
     def __init__(self, host: str, port: int, mountpoint: str,
                  username: str = "", password: str = ""):
-        self._stop_event = Event()
         self._ntrip_client: gnsshat.NtripClient | None = None
         self._hat: gnsshat.GnssHat | None = None
         self._host = host
@@ -89,21 +101,15 @@ class NtripRover:
         print("NTRIP client connected - streaming RTCM3 corrections.\n")
         return True
 
-    def _apply_corrections_loop(self):
+    def _apply_corrections(self):
         """
-        Background thread: polls the NTRIP client for frames
-        and applies them to the GNSS receiver.
+        Applies the RTCM3 frames received from the NTRIP client since the
+        last epoch. Called once per navigation epoch, so no extra thread
+        has to be stopped.
         """
-        while not self._stop_event.is_set():
-            if not self._ntrip_client.is_connected():
-                time.sleep(1.0)
-                continue
-
-            frames = self._ntrip_client.receive()
-            if frames:
-                self._hat.rtk_apply_corrections(frames)
-            else:
-                time.sleep(0.1)
+        frames = self._ntrip_client.receive()
+        if frames:
+            self._hat.rtk_apply_corrections(frames)
 
     def run(self):
         """Main loop — prints navigation status at each epoch"""
@@ -112,18 +118,12 @@ class NtripRover:
         if not self.start_ntrip():
             return -1
 
-        # Start correction-application thread
-        corrections_thread = Thread(
-            target=self._apply_corrections_loop,
-            daemon=True
-        )
-        corrections_thread.start()
-
         print("Monitoring RTK fix quality (Ctrl+C to stop)...\n")
 
+        signals_interrupt = signals_handler(self._hat)
         try:
-            while not self._stop_event.is_set():
-                nav = self._hat.wait_and_get_fresh_navigation()
+            while (nav := self._hat.wait_and_get_fresh_navigation()) is not None:
+                self._apply_corrections()
                 fix_quality = gnsshat.FixQuality(nav.pvt.fix_quality)
                 fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
@@ -132,13 +132,12 @@ class NtripRover:
                       f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}  "
                       f"alt={nav.pvt.altitude_msl:.1f}m  "
                       f"sats={nav.pvt.visible_satellites}")
-
-        except KeyboardInterrupt:
-            print("\nStopping RTK Rover...")
-        except Exception as e:
-            print(f"Error: {e}")
-            return -1
         finally:
+            # Wakes sigwait if the loop ends without a signal (e.g. a break added
+            # to the loop or an exception).
+            if signals_interrupt.is_alive():
+                signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+            signals_interrupt.join()
             self.stop()
 
         print("Program finished.")
@@ -146,7 +145,6 @@ class NtripRover:
 
     def stop(self):
         """Disconnect NTRIP client and clean up."""
-        self._stop_event.set()
         if self._ntrip_client is not None:
             self._ntrip_client.disconnect()
 
@@ -167,14 +165,6 @@ def main():
 
     rover = NtripRover(args.host, args.port, args.mountpoint,
                        args.user, args.password)
-
-    def signal_handler(_sig, _frame):
-        rover.stop()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
     return rover.run()
 
 

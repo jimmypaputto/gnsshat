@@ -1,5 +1,8 @@
 # Jimmy Paputto 2025
 
+import signal
+import threading
+
 from jimmypaputto import gnsshat
 
 
@@ -25,6 +28,21 @@ def create_default_config() -> dict:
     }
 
 
+def signals_handler(hat):
+    signals = {signal.SIGINT, signal.SIGTERM}
+    # Blocks the signals in the calling thread (main); the new thread
+    # inherits the mask. Library threads block them on their own.
+    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+
+    def wait_for_signal():
+        signal.sigwait(signals)
+        hat.shutdown()
+
+    thread = threading.Thread(target=wait_for_signal)
+    thread.start()
+    return thread
+
+
 def main():
     hat = gnsshat.GnssHat()
     hat.hard_reset_cold_start()
@@ -36,11 +54,14 @@ def main():
 
     print("Startup done, ublox configured")
 
-    hat.enable_timepulse()  # if you use kernel pps it will fail
+    # Raises RuntimeError while the kernel PPS driver holds GPIO 5
+    # (dtoverlay=pps-gpio).
+    hat.enable_timepulse()
+
+    signals_interrupt = signals_handler(hat)
     counter = 0
     try:
-        while True:
-            hat.timepulse()
+        while hat.timepulse():
             nav = hat.get_navigation()
             utc = nav.pvt.utc_time
             date = nav.pvt.date
@@ -48,9 +69,12 @@ def main():
             date_valid = "VALID" if date.valid else "INVALID"
             print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] Timepulse: {counter} | time:{time_valid} date:{date_valid} acc:{utc.accuracy}ns")
             counter += 1
-
-    except KeyboardInterrupt:
-        print("\nStopping timepulse monitoring...")
+    finally:
+        # Wakes sigwait if the loop ends without a signal (e.g. a break added
+        # to the loop or an exception).
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
 
     print("Program finished")
     return 0
