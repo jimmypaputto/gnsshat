@@ -5,6 +5,7 @@
 #ifndef JIMMY_PAPUTTO_TIMEPULSE_HPP_
 #define JIMMY_PAPUTTO_TIMEPULSE_HPP_
 
+#include <cstdint>
 #include <cstdio>
 #include <thread>
 
@@ -43,11 +44,15 @@ public:
     }
 
 private:
+    // A timeout of 0 would return at once and spin a whole core. This one
+    // bounds how long a stop waits for the loop to notice it.
+    static constexpr int64_t waitTimeoutNs = 100'000'000;
+
     void interruptHandler(std::stop_token stoken)
     {
         while (!stoken.stop_requested())
         {
-            auto event = gpioLine_.waitEvent(0);
+            auto event = gpioLine_.waitEvent(waitTimeoutNs);
             if (event == GpioInterruptLine::EventType::Rising)
             {
                 notifier_.notify();

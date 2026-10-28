@@ -67,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the process was lost whenever stdout was not a terminal (systemd, Docker,
   ROS launch), because it was buffered. It now goes to stderr and names the
   detected product
+- With the timepulse enabled, its interrupt thread kept one CPU core busy,
+  because it polled the GPIO line with a zero timeout that returns at once.
+  It now blocks on the line for up to 100 ms per wait
 - A signal handled by the application, e.g. SIGINT or SIGTERM, could run in a
   library thread and interrupt its blocking I/O, which then failed like a
   device error. Threads started by the library now block all asynchronous
