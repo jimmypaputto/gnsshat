@@ -14,7 +14,7 @@
 #include <thread>
 #include <type_traits>
 
-#include "common/BlockTerminationSignals.hpp"
+#include "common/BlockAllSignals.hpp"
 #include "ublox/GnssConfig.hpp"
 #include "ublox/NavigationStore.hpp"
 #include "ublox/NmeaForwarder.hpp"
@@ -553,15 +553,12 @@ bool GnssHat::start(const GnssConfig& config)
         txReady_->run();
     }
 
-    {
-        const BlockTerminationSignals blocked;
-        ubloxThread_ = std::jthread([this](std::stop_token stoken){
-            while (!stoken.stop_requested())
-            {
-                ublox_->run(stoken);
-            }
-        });
-    }
+    ubloxThread_ = startLibraryThread([this](std::stop_token stoken){
+        while (!stoken.stop_requested())
+        {
+            ublox_->run(stoken);
+        }
+    });
 
     return true;
 }

@@ -9,7 +9,7 @@
 #include <cstdlib>
 #include <thread>
 
-#include "common/BlockTerminationSignals.hpp"
+#include "common/BlockAllSignals.hpp"
 #include "common/GpioInterruptLine.hpp"
 #include "common/Notifier.hpp"
 
@@ -39,8 +39,7 @@ public:
 
     void run()
     {
-        const BlockTerminationSignals blocked;
-        interruptHandler_ = std::jthread([this](std::stop_token stoken) {
+        interruptHandler_ = startLibraryThread([this](std::stop_token stoken) {
             interruptHandler(stoken);
         });
     }

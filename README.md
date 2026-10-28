@@ -335,7 +335,7 @@ std::jthread worker([&hat](std::stop_token stop) {
 // declared after `hat`: the worker is stopped and joined first
 ```
 
-Threads started by the library block SIGINT and SIGTERM, so the application's signal handlers always run in its own threads.
+The library never installs signal handlers and never uses signals internally. Its internal threads block all asynchronous signals, so signals are delivered only to application threads. `shutdown()` is thread-safe; call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler. The examples show the pattern: `main` blocks SIGINT and SIGTERM before starting any thread, a dedicated thread takes them with `sigwait()` and calls `shutdown()`, and `main` keeps waiting for data until the waits return `std::nullopt` / `false`.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 

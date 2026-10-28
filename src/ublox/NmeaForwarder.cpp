@@ -4,7 +4,7 @@
 
 #include "ublox/NmeaForwarder.hpp"
 
-#include "common/BlockTerminationSignals.hpp"
+#include "common/BlockAllSignals.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -214,8 +214,7 @@ void NmeaForwarder::startForwarding(const NavigationStore& navigationStore,
     }
 
     lastEpoch_.clear();
-    const BlockTerminationSignals blocked;
-    forwardingThread_ = std::jthread(
+    forwardingThread_ = startLibraryThread(
         [this, &navigationStore, &navigationNotifier](std::stop_token stoken) {
             forwardingThread(navigationStore, navigationNotifier, stoken);
         }

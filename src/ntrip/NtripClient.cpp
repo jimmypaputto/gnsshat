@@ -18,7 +18,7 @@
 #include <algorithm>
 #include <sstream>
 
-#include "common/BlockTerminationSignals.hpp"
+#include "common/BlockAllSignals.hpp"
 #include "common/Utils.hpp"
 #include "ublox/Rtcm3Parser.hpp"
 
@@ -69,9 +69,8 @@ namespace JimmyPaputto
         if (!connectInternal())
             return false;
 
-        const BlockTerminationSignals blocked;
-        recvThread_ = std::jthread([this](std::stop_token st)
-                                   { receiveLoop(st); });
+        recvThread_ = startLibraryThread([this](std::stop_token st)
+                                         { receiveLoop(st); });
         return true;
     }
 
@@ -428,9 +427,8 @@ namespace JimmyPaputto
             ggaCv_.notify_all();
             autoGgaThread_.join();
         }
-        const BlockTerminationSignals blocked;
-        autoGgaThread_ = std::jthread([this](std::stop_token st)
-                                      { autoGgaLoop(st); });
+        autoGgaThread_ = startLibraryThread([this](std::stop_token st)
+                                            { autoGgaLoop(st); });
     }
 
     std::vector<NtripSourcetableEntry> NtripClient::fetchSourcetable(

@@ -25,6 +25,9 @@
 namespace JimmyPaputto
 {
 
+// The library never installs signal handlers and never uses signals
+// internally. Its internal threads block all asynchronous signals, so signals
+// are delivered only to application threads.
 class IGnssHat
 {
 public:

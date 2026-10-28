@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <sstream>
 
-#include "common/BlockTerminationSignals.hpp"
+#include "common/BlockAllSignals.hpp"
 #include "common/Utils.hpp"
 
 namespace JimmyPaputto
@@ -71,11 +71,8 @@ namespace JimmyPaputto
 
         running_ = true;
         statsStart();
-        {
-            const BlockTerminationSignals blocked;
-            acceptThread_ = std::jthread([this](std::stop_token st)
-                                         { acceptLoop(st); });
-        }
+        acceptThread_ = startLibraryThread([this](std::stop_token st)
+                                           { acceptLoop(st); });
 
         log(ENtripLogLevel::Info, "[NtripCaster] Listening on %s:%u/%s (max %zu clients)",
             host_.c_str(), port_, mountpoint_.c_str(), maxClients_);
@@ -252,11 +249,12 @@ namespace JimmyPaputto
             // Spawn tracked handler thread
             auto ht = std::make_unique<HandlerThread>();
             auto *htPtr = ht.get();
-            ht->thread = std::thread([this, clientFd, addr = std::move(addr), htPtr]()
-                                     {
-                                         handleClient(clientFd, addr);
-                                         htPtr->finished.store(true, std::memory_order_release);
-                                     });
+            ht->thread = startLibraryThread<std::thread>(
+                [this, clientFd, addr = std::move(addr), htPtr]()
+                {
+                    handleClient(clientFd, addr);
+                    htPtr->finished.store(true, std::memory_order_release);
+                });
             {
                 std::lock_guard tlock(threadsMutex_);
                 clientThreads_.push_back(std::move(ht));
