@@ -10,6 +10,7 @@
 #include <thread>
 
 #include "common/ThreadingSignals.hpp"
+#include "ublox/TimepulsePinConfig.hpp"
 #include "common/GpioInterruptLine.hpp"
 #include "common/Notifier.hpp"
 
@@ -22,11 +23,18 @@ namespace JimmyPaputto
 class Timepulse
 {
 public:
-    explicit Timepulse(Notifier& notifier)
+    Timepulse(Notifier& notifier, ETimepulsePinPolarity polarity)
     :   notifier_(notifier),
-        gpioLine_(TIMEPULSE_PIN,
-            GpioInterruptLine::Edge::Rising, "ublox_timepulse")
+        gpioLine_(TIMEPULSE_PIN, edgeAtTopOfSecond(polarity), "ublox_timepulse")
     {
+    }
+
+    static constexpr GpioInterruptLine::Edge edgeAtTopOfSecond(
+        ETimepulsePinPolarity polarity)
+    {
+        return polarity == ETimepulsePinPolarity::FallingEdgeAtTopOfSecond
+            ? GpioInterruptLine::Edge::Falling
+            : GpioInterruptLine::Edge::Rising;
     }
 
     ~Timepulse()
@@ -53,7 +61,8 @@ private:
         while (!stoken.stop_requested())
         {
             auto event = gpioLine_.waitEvent(waitTimeoutNs);
-            if (event == GpioInterruptLine::EventType::Rising)
+            if (event == GpioInterruptLine::EventType::Rising
+                || event == GpioInterruptLine::EventType::Falling)
             {
                 notifier_.notify();
             }

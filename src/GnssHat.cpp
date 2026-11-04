@@ -500,6 +500,12 @@ bool GnssHat::start(const GnssConfig& config)
     }
 
     config_ = config;
+    // A line opened before start() listens for the edge of the old polarity.
+    if (timepulseEnabled_.load())
+    {
+        disableTimepulse();
+        enableTimepulse();
+    }
     configRegistry_ = std::make_unique<UbloxConfigRegistry>(config_);
     ubxParser_ = std::make_unique<UbxParser>(
         *configRegistry_, navigationStore_, timeMarkNotifier_
@@ -586,7 +592,9 @@ bool GnssHat::enableTimepulse()
         return true;
     }
 
-    timepulse_ = std::make_unique<Timepulse>(timepulseNotifier_);
+    timepulse_ = std::make_unique<Timepulse>(
+        timepulseNotifier_, config_.timepulsePinConfig.polarity
+    );
     timepulse_->run();
     timepulseEnabled_.store(true);
     return true;

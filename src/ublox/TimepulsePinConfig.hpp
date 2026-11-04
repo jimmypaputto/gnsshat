@@ -29,7 +29,8 @@ struct TimepulsePinConfig
     };
     Pulse fixedPulse;
     std::optional<Pulse> pulseWhenNoFix;
-    ETimepulsePinPolarity polarity;
+    ETimepulsePinPolarity polarity{
+        ETimepulsePinPolarity::RisingEdgeAtTopOfSecond};
 };
 
 }  // JimmyPaputto

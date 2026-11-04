@@ -68,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the process was lost whenever stdout was not a terminal (systemd, Docker,
   ROS launch), because it was buffered. It now goes to stderr and names the
   detected product
+- With `FallingEdgeAtTopOfSecond`, `timepulse()` returned at the end of the
+  pulse instead of at the top of the second, because the library always
+  listened for the rising edge. It now listens for the edge the configured
+  polarity puts at the top of the second
 - With the timepulse enabled, its interrupt thread kept one CPU core busy,
   because it polled the GPIO line with a zero timeout that returns at once.
   It now blocks on the line for up to 100 ms per wait
