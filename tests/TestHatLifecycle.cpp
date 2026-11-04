@@ -253,3 +253,19 @@ TEST(HatLifecycle, WaitForEventTimesOutThenStops)
     EXPECT_EQ(hat->waitForEvent(EHatEvent::Navigation, 20ms),
         EWaitResult::Stopped);
 }
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, EnableTimepulseFailsWhenTheLineIsTaken)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    std::unique_ptr<IGnssHat> first(IGnssHat::create());
+    std::unique_ptr<IGnssHat> second(IGnssHat::create());
+    ASSERT_TRUE(first->enableTimepulse());
+    EXPECT_FALSE(second->enableTimepulse());
+    EXPECT_FALSE(second->timepulse()) << "the failed enable left it disabled";
+}
