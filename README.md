@@ -310,6 +310,7 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
 | `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, `shutdown()`, destruction) |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
+| `waitForEvent(event, timeout)` | Block until the next `EHatEvent` for at most `timeout`; `EWaitResult` says `Ready`, `Timeout` or `Stopped`. For code with work to do between waits; read the data with `navigation()` / `timeMark()` |
 | `shutdown()` | Stop every wait and gpsd forwarding of this instance for good; thread-safe, not async-signal-safe |
 
 A wait is stopped in three ways, and a loop on it then ends:

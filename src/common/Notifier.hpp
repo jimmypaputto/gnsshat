@@ -5,6 +5,7 @@
 #ifndef JIMMY_PAPUTTO_NOTIFIER_HPP_
 #define JIMMY_PAPUTTO_NOTIFIER_HPP_
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -17,6 +18,13 @@ namespace JimmyPaputto
 class Notifier
 {
 public:
+    enum class EWaitFor : uint8_t
+    {
+        Notified,
+        TimedOut,
+        Stopped
+    };
+
     void notify()
     {
         std::lock_guard lock(mtx);
@@ -59,6 +67,20 @@ public:
             return false;
         ready = false;
         return true;
+    }
+
+    // As wait(stoken, other) with one token, but gives up after `timeout`.
+    EWaitFor waitFor(std::stop_token stoken, std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock(mtx);
+        const bool notified =
+            cv.wait_for(lock, stoken, timeout, [this]{ return ready; });
+        if (stoken.stop_requested())
+            return EWaitFor::Stopped;
+        if (!notified)
+            return EWaitFor::TimedOut;
+        ready = false;
+        return EWaitFor::Notified;
     }
 
     // Side subscriber: keeps its own cursor instead of consuming `ready`, so

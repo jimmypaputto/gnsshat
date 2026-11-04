@@ -975,6 +975,26 @@ bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
     return hat->instance->timepulse();
 }
 
+jp_gnss_wait_result_t jp_gnss_hat_wait_for_event(jp_gnss_hat_t* hat,
+    jp_gnss_hat_event_t event, uint32_t timeout_ms)
+{
+    if (!hat || !hat->instance)
+        return JP_GNSS_WAIT_STOPPED;
+
+    const auto hatEvent =
+        event == JP_GNSS_HAT_EVENT_NAVIGATION ? EHatEvent::Navigation
+        : event == JP_GNSS_HAT_EVENT_TIME_MARK ? EHatEvent::TimeMark
+        : EHatEvent::Timepulse;
+    switch (hat->instance->waitForEvent(
+        hatEvent, std::chrono::milliseconds(timeout_ms)))
+    {
+        case EWaitResult::Ready:   return JP_GNSS_WAIT_READY;
+        case EWaitResult::Timeout: return JP_GNSS_WAIT_TIMEOUT;
+        case EWaitResult::Stopped: return JP_GNSS_WAIT_STOPPED;
+    }
+    return JP_GNSS_WAIT_STOPPED;
+}
+
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
 {
     if (!hat || !hat->instance)

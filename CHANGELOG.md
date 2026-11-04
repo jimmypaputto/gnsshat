@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   wait and gpsd forwarding of a HAT for good, so worker loops end and can be
   joined before the HAT is deleted. It is thread-safe but not
   async-signal-safe: call it from a thread waiting in `sigwait()`
+- `waitForEvent()` (C `jp_gnss_hat_wait_for_event()`) waits for the next epoch,
+  time mark or timepulse for at most a given time, for code with work to do
+  between waits. The result tells a timeout apart from a wait that is over
 - Python `GnssHat.close()` and `GnssHat.closed`, so the HAT can be released
   without a `with` block. Leaving a `with` block calls `close()`
 

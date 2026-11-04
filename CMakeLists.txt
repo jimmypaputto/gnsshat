@@ -356,6 +356,7 @@ install(
 install(
     FILES
         src/GnssHat.hpp
+        src/EHatEvents.hpp
         src/GnssHat.h
         src/Version.hpp
     DESTINATION

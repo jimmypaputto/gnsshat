@@ -224,3 +224,32 @@ TEST(HatLifecycle, ShutdownEndsGpsdJoin)
         << devicePath << " left behind";
     EXPECT_FALSE(hat->startForwardForGpsd()) << "the stop is permanent";
 }
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, WaitForEventTimesOutThenStops)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    const std::string product = Hat::detectProduct();
+    if (product.empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    using namespace std::chrono_literals;
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+
+    // Not started, so no epoch arrives.
+    EXPECT_EQ(hat->waitForEvent(EHatEvent::Navigation, 20ms),
+        EWaitResult::Timeout);
+    EXPECT_EQ(hat->waitForEvent(EHatEvent::Timepulse, 20ms),
+        EWaitResult::Stopped) << "timepulse is not enabled";
+    if (product != "L1/L5 GNSS TIME HAT")
+    {
+        EXPECT_EQ(hat->waitForEvent(EHatEvent::TimeMark, 20ms),
+            EWaitResult::Stopped) << "no time mark input";
+    }
+
+    hat->shutdown();
+    EXPECT_EQ(hat->waitForEvent(EHatEvent::Navigation, 20ms),
+        EWaitResult::Stopped);
+}

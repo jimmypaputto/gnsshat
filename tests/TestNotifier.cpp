@@ -135,3 +135,39 @@ TEST(Notifier, StoppingInstanceEndsAllWaits)
     for (const bool result : results)
         EXPECT_FALSE(result);
 }
+
+TEST(Notifier, WaitForReportsNotifiedAndTimedOut)
+{
+    Notifier notifier;
+    notifier.notify();
+    EXPECT_EQ(notifier.waitFor({}, 10ms), Notifier::EWaitFor::Notified);
+    EXPECT_EQ(notifier.waitFor({}, 10ms), Notifier::EWaitFor::TimedOut);
+}
+
+TEST(Notifier, WaitForStopKeepsPendingNotification)
+{
+    Notifier notifier;
+    notifier.notify();
+    std::stop_source stopped;
+    stopped.request_stop();
+    EXPECT_EQ(notifier.waitFor(stopped.get_token(), 10ms),
+        Notifier::EWaitFor::Stopped);
+    EXPECT_EQ(notifier.waitFor({}, 10ms), Notifier::EWaitFor::Notified);
+}
+
+TEST(Notifier, StopEndsWaitForBeforeTheTimeout)
+{
+    Notifier notifier;
+    std::stop_source stop;
+    std::promise<Notifier::EWaitFor> result;
+    auto future = result.get_future();
+    std::thread waiter([&] {
+        result.set_value(notifier.waitFor(stop.get_token(), 30s));
+    });
+
+    std::this_thread::sleep_for(50ms);
+    stop.request_stop();
+    ASSERT_EQ(future.wait_for(5s), std::future_status::ready);
+    EXPECT_EQ(future.get(), Notifier::EWaitFor::Stopped);
+    waiter.join();
+}

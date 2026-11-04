@@ -112,6 +112,8 @@ public:
     void disableTimeMarkTrigger() override;
     void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
+    EWaitResult waitForEvent(EHatEvent event,
+        std::chrono::milliseconds timeout) override;
     void shutdown() override;
 
     SystemHealth systemHealth() const override;
@@ -143,6 +145,8 @@ protected:
         GnssHat& hat_;
     };
 
+    EWaitResult waitFor(Notifier& notifier, std::chrono::milliseconds timeout);
+    void warnTimepulseNotEnabled() const;
     // First step of every destructor in the hierarchy, before any member is
     // destroyed.
     void shutdownAndWaitForBlockingCalls();
@@ -244,6 +248,15 @@ public:
         if (!timeMarkNotifier_.wait(stopSource_.get_token(), stop))
             return std::nullopt;
         return navigationStore_.timeMark();
+    }
+    EWaitResult waitForEvent(EHatEvent event,
+        std::chrono::milliseconds timeout) override
+    {
+        if (event != EHatEvent::TimeMark)
+            return GnssHat::waitForEvent(event, timeout);
+
+        BlockingCall call(*this);
+        return waitFor(timeMarkNotifier_, timeout);
     }
 
     SystemHealth systemHealth() const override
@@ -613,8 +626,8 @@ void GnssHat::disableTimepulse()
     if (!timepulseEnabled_.load())
         return;
 
-    timepulse_.reset();
     timepulseEnabled_.store(false);
+    timepulse_.reset();
 }
 
 void GnssHat::hardResetUbloxSom_ColdStart() const
@@ -636,15 +649,20 @@ void GnssHat::softResetUbloxSom_HotStart()
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 }
 
+void GnssHat::warnTimepulseNotEnabled() const
+{
+    fprintf(
+        stderr,
+        "[GNSS] Timepulse not enabled. Call enableTimepulse() first.\r\n"
+    );
+}
+
 bool GnssHat::timepulse(std::stop_token stop)
 {
     BlockingCall call(*this);
-    if (!timepulseEnabled_.load() || !timepulse_)
+    if (!timepulseEnabled_.load())
     {
-        fprintf(
-            stderr,
-            "[GNSS] Timepulse not enabled. Call enableTimepulse() first.\r\n"
-        );
+        warnTimepulseNotEnabled();
         return false;
     }
     return timepulseNotifier_.wait(stopSource_.get_token(), stop);
@@ -760,6 +778,41 @@ std::string GnssHat::getGpsdDevicePath() const
     if (nmeaForwarder_ && nmeaForwarder_->isRunning())
         return nmeaForwarder_->getDevicePath();
     return "";
+}
+
+EWaitResult GnssHat::waitFor(Notifier& notifier,
+    std::chrono::milliseconds timeout)
+{
+    switch (notifier.waitFor(stopSource_.get_token(), timeout))
+    {
+        case Notifier::EWaitFor::Notified: return EWaitResult::Ready;
+        case Notifier::EWaitFor::TimedOut: return EWaitResult::Timeout;
+        case Notifier::EWaitFor::Stopped:  return EWaitResult::Stopped;
+    }
+    return EWaitResult::Stopped;
+}
+
+EWaitResult GnssHat::waitForEvent(EHatEvent event,
+    std::chrono::milliseconds timeout)
+{
+    BlockingCall call(*this);
+    switch (event)
+    {
+        case EHatEvent::Navigation:
+            return waitFor(navigationNotifier_, timeout);
+        case EHatEvent::Timepulse:
+            if (!timepulseEnabled_.load())
+            {
+                warnTimepulseNotEnabled();
+                return EWaitResult::Stopped;
+            }
+            return waitFor(timepulseNotifier_, timeout);
+        case EHatEvent::TimeMark:
+            // Only the TIME HAT has a time mark input; this reports that.
+            waitAndGetFreshTimeMark({});
+            return EWaitResult::Stopped;
+    }
+    return EWaitResult::Stopped;
 }
 
 void GnssHat::shutdown()

@@ -548,6 +548,20 @@ typedef struct
 
 typedef struct jp_gnss_hat jp_gnss_hat_t;
 
+typedef enum
+{
+    JP_GNSS_HAT_EVENT_NAVIGATION = 0,
+    JP_GNSS_HAT_EVENT_TIME_MARK  = 1,
+    JP_GNSS_HAT_EVENT_TIMEPULSE  = 2
+} jp_gnss_hat_event_t;
+
+typedef enum
+{
+    JP_GNSS_WAIT_READY   = 0,
+    JP_GNSS_WAIT_TIMEOUT = 1,
+    JP_GNSS_WAIT_STOPPED = 2
+} jp_gnss_wait_result_t;
+
 /* Never returns NULL: an unknown or missing HAT terminates the process. */
 jp_gnss_hat_t* jp_gnss_hat_create(void);
 /* Stops the waits (jp_gnss_hat_wait_and_get_fresh_*, jp_gnss_hat_timepulse)
@@ -591,6 +605,14 @@ void jp_gnss_hat_soft_reset_hot_start(jp_gnss_hat_t* hat);
 /* Blocks until the next timepulse; false when the timepulse is not enabled
  * or the waits are stopped. */
 bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
+/* Blocks until the next `event` like the waits above, but for at most
+ * `timeout_ms`, for code that has work to do between waits, e.g. a language
+ * binding running signal handlers. READY: read the data with
+ * jp_gnss_hat_get_navigation() or jp_gnss_hat_get_time_mark(). STOPPED: the
+ * event will never come, in the same cases in which the waits above return
+ * false. */
+jp_gnss_wait_result_t jp_gnss_hat_wait_for_event(jp_gnss_hat_t* hat,
+    jp_gnss_hat_event_t event, uint32_t timeout_ms);
 
 bool jp_gnss_hat_get_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_t* time_mark);

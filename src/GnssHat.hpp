@@ -6,7 +6,9 @@
 #define GNSS_HAT_HPP_
 
 #include "Version.hpp"
+#include "EHatEvents.hpp"
 
+#include <chrono>
 #include <optional>
 #include <stop_token>
 #include <string>
@@ -82,6 +84,14 @@ public:
     virtual void disableTimeMarkTrigger() = 0;
     virtual void triggerTimeMark(
         ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
+
+    // Blocks until the next `event` like the waits above, but for at most
+    // `timeout`, for code that has work to do between waits, e.g. a language
+    // binding running signal handlers. Ready: read the data with navigation()
+    // or timeMark(). Stopped: the event will never come, in the same cases in
+    // which the waits above return std::nullopt / false.
+    virtual EWaitResult waitForEvent(EHatEvent event,
+        std::chrono::milliseconds timeout) = 0;
 
     // Stops every wait of this instance and gpsd forwarding for good: the
     // waits return std::nullopt / false now and later, joinForwardForGpsd()

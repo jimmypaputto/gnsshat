@@ -79,3 +79,37 @@ TEST(CApi, DestroyWakesBlockedWait)
     waiter.join();
     EXPECT_EQ(result.load(), 0);
 }
+
+TEST(CApi, WaitForEventWithoutHatIsStopped)
+{
+    EXPECT_EQ(
+        jp_gnss_hat_wait_for_event(nullptr, JP_GNSS_HAT_EVENT_NAVIGATION, 1),
+        JP_GNSS_WAIT_STOPPED
+    );
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(CApi, WaitForEventTimesOutThenStops)
+{
+    if (std::getenv("GNSSHAT_HW_TESTS") == nullptr)
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (JimmyPaputto::Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    jp_gnss_hat_t* hat = jp_gnss_hat_create();
+
+    // Not started, so no epoch arrives.
+    EXPECT_EQ(
+        jp_gnss_hat_wait_for_event(hat, JP_GNSS_HAT_EVENT_NAVIGATION, 20),
+        JP_GNSS_WAIT_TIMEOUT
+    );
+
+    jp_gnss_hat_shutdown(hat);
+    EXPECT_EQ(
+        jp_gnss_hat_wait_for_event(hat, JP_GNSS_HAT_EVENT_NAVIGATION, 20),
+        JP_GNSS_WAIT_STOPPED
+    );
+
+    jp_gnss_hat_destroy(hat);
+}
