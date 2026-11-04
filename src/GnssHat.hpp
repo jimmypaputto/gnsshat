@@ -59,6 +59,7 @@ public:
     virtual void joinForwardForGpsd() = 0;
     virtual std::string getGpsdDevicePath() const = 0;
 
+    // Returns false if GPIO 5 is taken, e.g. by the kernel PPS driver.
     virtual bool enableTimepulse() = 0;
     virtual void disableTimepulse() = 0;
     // Blocks until the next timepulse. Returns false when the timepulse is

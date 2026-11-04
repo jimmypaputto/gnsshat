@@ -11,6 +11,7 @@
 #include <fstream>
 #include <functional>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <type_traits>
 
@@ -592,9 +593,16 @@ bool GnssHat::enableTimepulse()
         return true;
     }
 
-    timepulse_ = std::make_unique<Timepulse>(
-        timepulseNotifier_, config_.timepulsePinConfig.polarity
-    );
+    try
+    {
+        timepulse_ = std::make_unique<Timepulse>(
+            timepulseNotifier_, config_.timepulsePinConfig.polarity
+        );
+    }
+    catch (const std::runtime_error&)
+    {
+        return false;
+    }
     timepulse_->run();
     timepulseEnabled_.store(true);
     return true;

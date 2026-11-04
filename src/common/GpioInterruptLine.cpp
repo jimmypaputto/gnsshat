@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 
 #include <gpiod.h>
 
@@ -92,7 +93,7 @@ GpioInterruptLine::GpioInterruptLine(
             pin_
         );
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("GPIO line request failed");
     }
 
     eventBuffer_ = gpiod_edge_event_buffer_new(1);
@@ -149,7 +150,7 @@ GpioInterruptLine::GpioInterruptLine(
             pin_
         );
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("GPIO line request failed");
     }
 #endif
 }

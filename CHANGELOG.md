@@ -68,6 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the process was lost whenever stdout was not a terminal (systemd, Docker,
   ROS launch), because it was buffered. It now goes to stderr and names the
   detected product
+- `enableTimepulse()` terminated the process when GPIO 5 was taken, e.g. by the
+  kernel PPS driver, although it returns `bool` and Python documents a
+  `RuntimeError`. It now returns `false`, and Python raises
 - With `FallingEdgeAtTopOfSecond`, `timepulse()` returned at the end of the
   pulse instead of at the top of the second, because the library always
   listened for the rising edge. It now listens for the edge the configured
