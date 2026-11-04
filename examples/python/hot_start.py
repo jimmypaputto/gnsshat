@@ -107,7 +107,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -127,13 +128,13 @@ def main():
         print("GNSS HAT started successfully!")
 
         signals_interrupt = signals_handler(hat)
-        try:
-            result = measure_startups(hat, gnss_config['measurement_rate_hz'])
-        finally:
-            # Wakes sigwait when the measurement ends without a signal.
-            if signals_interrupt.is_alive():
-                signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-            signals_interrupt.join()
+
+        result = measure_startups(hat, gnss_config['measurement_rate_hz'])
+
+        # Wakes sigwait when the measurement ends without a signal.
+        if signals_interrupt.is_alive():
+            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
+        signals_interrupt.join()
 
     if result == 0:
         print("\nExample completed successfully")

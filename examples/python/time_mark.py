@@ -45,7 +45,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -68,17 +69,12 @@ def main():
         # signals.
         toggle = threading.Thread(target=toggle_thread_func, args=(hat,))
         toggle.start()
-        try:
-            while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
-                print(tm)
-        finally:
-            # Wakes sigwait if the loop ends without a signal (e.g. a break added
-            # to the loop or an exception).
-            if signals_interrupt.is_alive():
-                signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-            signals_interrupt.join()
-            toggle.join()
-            hat.disable_time_mark_trigger()
+        while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
+            print(tm)
+
+        signals_interrupt.join()
+        toggle.join()
+        hat.disable_time_mark_trigger()
 
     print("Exiting...")
     return 0

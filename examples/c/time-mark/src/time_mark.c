@@ -150,15 +150,12 @@ int main(void)
     const bool toggling =
         pthread_create(&toggle_tid, NULL, toggle_thread_func, gnss) == 0;
     if (!toggling)
-        printf("Failed to start the toggle thread\r\n");
+        printf("Failed to start the toggle thread, EXTINT stays idle\r\n");
 
     jp_gnss_time_mark_t tm;
-    while (toggling && jp_gnss_hat_wait_and_get_fresh_time_mark(gnss, &tm))
+    while (jp_gnss_hat_wait_and_get_fresh_time_mark(gnss, &tm))
         print_time_mark(&tm);
 
-    /* Wakes sigwait if the loop ends without a signal (e.g. a break added
-     * to the loop or a future device error). */
-    pthread_kill(signals_interrupt, SIGINT);
     pthread_join(signals_interrupt, NULL);
     if (toggling)
         pthread_join(toggle_tid, NULL);

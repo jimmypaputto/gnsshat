@@ -325,9 +325,6 @@ auto main() -> int
     while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
         printNavigationTable(*navigation, std::string(ubxHat->name()));
 
-    // Wakes sigwait if the loop ends without a signal (e.g. a break added
-    // to the loop or a future device error).
-    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
     signalsInterrupt.join();
 
     showCursor();

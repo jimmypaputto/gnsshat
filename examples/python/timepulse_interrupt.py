@@ -38,7 +38,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -60,21 +61,16 @@ def main():
 
     signals_interrupt = signals_handler(hat)
     counter = 0
-    try:
-        while hat.timepulse():
-            nav = hat.get_navigation()
-            utc = nav.pvt.utc_time
-            date = nav.pvt.date
-            time_valid = "VALID" if utc.valid else "INVALID"
-            date_valid = "VALID" if date.valid else "INVALID"
-            print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] Timepulse: {counter} | time:{time_valid} date:{date_valid} acc:{utc.accuracy}ns")
-            counter += 1
-    finally:
-        # Wakes sigwait if the loop ends without a signal (e.g. a break added
-        # to the loop or an exception).
-        if signals_interrupt.is_alive():
-            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-        signals_interrupt.join()
+    while hat.timepulse():
+        nav = hat.get_navigation()
+        utc = nav.pvt.utc_time
+        date = nav.pvt.date
+        time_valid = "VALID" if utc.valid else "INVALID"
+        date_valid = "VALID" if date.valid else "INVALID"
+        print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] Timepulse: {counter} | time:{time_valid} date:{date_valid} acc:{utc.accuracy}ns")
+        counter += 1
+
+    signals_interrupt.join()
 
     print("Program finished")
     return 0

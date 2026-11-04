@@ -269,9 +269,6 @@ int main(int argc, char* argv[])
         }
     }
 
-    /* Wakes sigwait if the loop ends without a signal (e.g. a break added
-     * to the loop or a future device error). */
-    pthread_kill(signals_interrupt, SIGINT);
     pthread_join(signals_interrupt, NULL);
 
     jp_gnss_ntrip_caster_stop(caster);

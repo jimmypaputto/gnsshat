@@ -138,7 +138,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -169,37 +170,32 @@ def main():
     caster.start()
 
     signals_interrupt = signals_handler(hat)
-    try:
-        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-            fix_type = gnsshat.FixType(nav.pvt.fix_type)
+    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+        fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
-            if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
-                print(f"Fix type: {fix_type.name}, "
-                      f"waiting for TIME_ONLY_FIX for RTK Base")
-            else:
-                print("\nRTK Base ready with TIME_ONLY_FIX")
-                corrections = hat.rtk_get_full_corrections()
-                if not corrections:
-                    print("RTK corrections not available yet")
-                    continue
+        if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
+            print(f"Fix type: {fix_type.name}, "
+                  f"waiting for TIME_ONLY_FIX for RTK Base")
+        else:
+            print("\nRTK Base ready with TIME_ONLY_FIX")
+            corrections = hat.rtk_get_full_corrections()
+            if not corrections:
+                print("RTK corrections not available yet")
+                continue
 
-                for frame in corrections:
-                    print_rtcm3_frame(frame, str(nav.pvt.utc_time))
+            for frame in corrections:
+                print_rtcm3_frame(frame, str(nav.pvt.utc_time))
 
-                caster.feed(corrections)
-                caster.update_position(
-                    nav.pvt.latitude, nav.pvt.longitude)
+            caster.feed(corrections)
+            caster.update_position(
+                nav.pvt.latitude, nav.pvt.longitude)
 
-                clients = caster.client_count()
-                if clients > 0:
-                    print(f"Broadcasting to {clients} client(s)")
-    finally:
-        # Wakes sigwait if the loop ends without a signal (e.g. a break added
-        # to the loop or an exception).
-        if signals_interrupt.is_alive():
-            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-        signals_interrupt.join()
-        caster.stop()
+            clients = caster.client_count()
+            if clients > 0:
+                print(f"Broadcasting to {clients} client(s)")
+
+    signals_interrupt.join()
+    caster.stop()
 
     print("Program finished")
     return 0

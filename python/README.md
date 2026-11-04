@@ -159,21 +159,18 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
 with gnsshat.GnssHat() as hat:
     hat.start(config)
     signals_interrupt = signals_handler(hat)
-    try:
-        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-            print(nav.pvt.latitude, nav.pvt.longitude)
-    finally:
-        # Wakes sigwait if the loop ends without a signal; join before close()
-        if signals_interrupt.is_alive():
-            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-        signals_interrupt.join()
+    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+        print(nav.pvt.latitude, nav.pvt.longitude)
+
+    signals_interrupt.join()  # before close()
 ```
 
 All examples in [examples/python](../examples/python) follow this pattern.

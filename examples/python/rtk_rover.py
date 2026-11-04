@@ -50,7 +50,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -121,24 +122,19 @@ class NtripRover:
         print("Monitoring RTK fix quality (Ctrl+C to stop)...\n")
 
         signals_interrupt = signals_handler(self._hat)
-        try:
-            while (nav := self._hat.wait_and_get_fresh_navigation()) is not None:
-                self._apply_corrections()
-                fix_quality = gnsshat.FixQuality(nav.pvt.fix_quality)
-                fix_type = gnsshat.FixType(nav.pvt.fix_type)
+        while (nav := self._hat.wait_and_get_fresh_navigation()) is not None:
+            self._apply_corrections()
+            fix_quality = gnsshat.FixQuality(nav.pvt.fix_quality)
+            fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
-                print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] "
-                      f"{fix_quality.name} ({fix_type.name})  "
-                      f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}  "
-                      f"alt={nav.pvt.altitude_msl:.1f}m  "
-                      f"sats={nav.pvt.visible_satellites}")
-        finally:
-            # Wakes sigwait if the loop ends without a signal (e.g. a break added
-            # to the loop or an exception).
-            if signals_interrupt.is_alive():
-                signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-            signals_interrupt.join()
-            self.stop()
+            print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] "
+                  f"{fix_quality.name} ({fix_type.name})  "
+                  f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}  "
+                  f"alt={nav.pvt.altitude_msl:.1f}m  "
+                  f"sats={nav.pvt.visible_satellites}")
+
+        signals_interrupt.join()
+        self.stop()
 
         print("Program finished.")
         return 0

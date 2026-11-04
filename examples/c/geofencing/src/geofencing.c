@@ -154,9 +154,6 @@ int main(void)
     while (jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
         print_geofencing(&navigation.geofencing);
 
-    /* Wakes sigwait if the loop ends without a signal (e.g. a break added
-     * to the loop or a future device error). */
-    pthread_kill(signals_interrupt, SIGINT);
     pthread_join(signals_interrupt, NULL);
 
     jp_gnss_hat_destroy(gnss);

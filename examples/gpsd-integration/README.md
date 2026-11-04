@@ -41,8 +41,7 @@ while (const auto nav = ubxHat->waitAndGetFreshNavigation())
     // use *nav...
 }
 
-// Ctrl+C ends the loop; wake sigwait in case something else did
-pthread_kill(signalsInterrupt.native_handle(), SIGINT);
+// Ctrl+C ends the loop
 signalsInterrupt.join();
 // the destructor stops the forwarder
 ```

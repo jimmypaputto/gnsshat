@@ -79,7 +79,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -98,18 +99,13 @@ def main():
     print("Press Ctrl+C to stop\n")
 
     signals_interrupt = signals_handler(ubx_hat)
-    try:
-        while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
-            for rf_block in navigation.rf_blocks:
-                print_rf_block(rf_block)
-                analyze_rf_block(rf_block)
-                print()
-    finally:
-        # Wakes sigwait if the loop ends without a signal (e.g. a break added
-        # to the loop or an exception).
-        if signals_interrupt.is_alive():
-            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-        signals_interrupt.join()
+    while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
+        for rf_block in navigation.rf_blocks:
+            print_rf_block(rf_block)
+            analyze_rf_block(rf_block)
+            print()
+
+    signals_interrupt.join()
 
     print("Program finished")
     return 0

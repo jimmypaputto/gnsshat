@@ -167,8 +167,6 @@ auto main() -> int
             nav->pvt.altitude, nav->pvt.visibleSatellites);
     }
 
-    // Wakes sigwait if the loop ends without a signal
-    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
     signalsInterrupt.join();
     return 0;  // the destructor stops and releases everything
 }
@@ -193,7 +191,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -216,14 +215,10 @@ if not hat.start(config):
     exit(1)
 
 signals_interrupt = signals_handler(hat)
-try:
-    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-        print(nav)
-finally:
-    # Wakes sigwait if the loop ends without a signal
-    if signals_interrupt.is_alive():
-        signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-    signals_interrupt.join()
+while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+    print(nav)
+
+signals_interrupt.join()
 hat.close()
 ```
 
@@ -284,8 +279,6 @@ int main(void)
             nav.pvt.altitude, nav.pvt.visible_satellites);
     }
 
-    /* Wakes sigwait if the loop ends without a signal */
-    pthread_kill(signals_interrupt, SIGINT);
     pthread_join(signals_interrupt, NULL);
     jp_gnss_hat_destroy(hat);
     return 0;

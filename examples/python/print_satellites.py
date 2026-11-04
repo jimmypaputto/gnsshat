@@ -98,7 +98,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -113,16 +114,11 @@ else:
     exit(1)
 
 signals_interrupt = signals_handler(hat)
-try:
-    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-        print("\033[2J\033[H", end="")  # clear terminal
-        print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
-        print()
-        print_satellites(nav)
-finally:
-    # Wakes sigwait if the loop ends without a signal (e.g. a break added
-    # to the loop or an exception).
-    if signals_interrupt.is_alive():
-        signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-    signals_interrupt.join()
+while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+    print("\033[2J\033[H", end="")  # clear terminal
+    print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
+    print()
+    print_satellites(nav)
+
+signals_interrupt.join()
 print("Exiting...")

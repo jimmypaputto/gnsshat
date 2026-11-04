@@ -124,7 +124,8 @@ def signals_handler(hat):
         signal.sigwait(signals)
         hat.shutdown()
 
-    thread = threading.Thread(target=wait_for_signal)
+    # A daemon: an exception in main must not leave the process waiting here.
+    thread = threading.Thread(target=wait_for_signal, daemon=True)
     thread.start()
     return thread
 
@@ -145,22 +146,17 @@ def main():
     print("Waiting for TimeOnlyFix...\n")
 
     signals_interrupt = signals_handler(hat)
-    try:
-        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-            fix_type = gnsshat.FixType(nav.pvt.fix_type)
-            time_iso = gnsshat.utc_time_iso8601(nav)
+    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+        fix_type = gnsshat.FixType(nav.pvt.fix_type)
+        time_iso = gnsshat.utc_time_iso8601(nav)
 
-            print(f"[{time_iso}] Fix: {fix_type.name}  "
-                  f"tAcc: {nav.pvt.utc_time.accuracy} ns  "
-                  f"Lat: {nav.pvt.latitude:.7f}  "
-                  f"Lon: {nav.pvt.longitude:.7f}  "
-                  f"Alt: {nav.pvt.altitude_msl:.2f} m")
-    finally:
-        # Wakes sigwait if the loop ends without a signal (e.g. a break added
-        # to the loop or an exception).
-        if signals_interrupt.is_alive():
-            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-        signals_interrupt.join()
+        print(f"[{time_iso}] Fix: {fix_type.name}  "
+              f"tAcc: {nav.pvt.utc_time.accuracy} ns  "
+              f"Lat: {nav.pvt.latitude:.7f}  "
+              f"Lon: {nav.pvt.longitude:.7f}  "
+              f"Alt: {nav.pvt.altitude_msl:.2f} m")
+
+    signals_interrupt.join()
 
     print("Program finished")
     return 0

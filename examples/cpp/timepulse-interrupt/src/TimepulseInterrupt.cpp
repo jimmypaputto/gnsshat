@@ -80,9 +80,6 @@ auto main() -> int
             counter++, time.hh, time.mm, time.ss);
     }
 
-    // Wakes sigwait if the loop ends without a signal (e.g. a break added
-    // to the loop or a future device error).
-    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
     signalsInterrupt.join();
     return 0;
 }

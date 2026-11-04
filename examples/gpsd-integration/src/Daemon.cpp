@@ -83,8 +83,6 @@ auto main() -> int
     // Ctrl+C and systemctl stop end it: shutdown() stops the forwarding.
     ubxHat->joinForwardForGpsd();
 
-    // Wakes sigwait if forwarding stops without a signal.
-    pthread_kill(signalsInterrupt.native_handle(), SIGINT);
     signalsInterrupt.join();
 
     // The destructor removes the virtual device and releases the HAT

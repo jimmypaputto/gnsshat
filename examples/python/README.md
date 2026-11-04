@@ -7,8 +7,9 @@ blocks both signals, a separate thread takes them with `signal.sigwait()` and
 calls `hat.shutdown()`, and the main thread's `wait_and_get_fresh_*()` /
 `timepulse()` loop then ends with `None` / `False`. A Python signal handler
 would only run once the native wait returns, so it could not end a wait on
-which no data arrives. The signal thread is joined before the HAT is closed;
-the `is_alive()` check before `signal.pthread_kill()` matters before Python
+which no data arrives. The signal thread is joined before the HAT is closed.
+Only `hot_start.py` ends by itself, so it wakes that thread with
+`signal.pthread_kill()`; the `is_alive()` check there matters before Python
 3.13, where a finished thread's id may be reused.
 
 ## Prerequisites
