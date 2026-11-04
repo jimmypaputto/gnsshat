@@ -56,9 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   blocked in `waitAndGetFresh*()`, `timepulse()` or `joinForwardForGpsd()`
   destroyed the object under that thread, and `timepulse()` could not be woken
   at all. Deletion now wakes these calls and waits for them to return
-- `stopForwardForGpsd()` from another thread could race with
-  `joinForwardForGpsd()` destroying the forwarder. The forwarder is now
-  guarded by a mutex
+- `stopForwardForGpsd()` and status reads could race with
+  `joinForwardForGpsd()`. Forwarder ownership is now mutex-protected and
+  status uses an atomic flag independent of the join; only one concurrent
+  joiner is supported
 - Leaving a Python `with GnssHat()` block while another thread was blocked in
   `wait_and_get_fresh_*()`, `timepulse()` or `join_forward_for_gpsd()` freed
   the HAT under that thread. `close()` now ends those waits with `None` /

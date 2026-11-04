@@ -219,11 +219,13 @@ void NmeaForwarder::startForwarding(const NavigationStore& navigationStore,
             forwardingThread(navigationStore, navigationNotifier, stoken);
         }
     );
+    running_.store(true);
 }
 
 void NmeaForwarder::stopForwarding()
 {
     forwardingThread_.request_stop();
+    running_.store(false);
 
     if (devicePath_.empty())
         return;
@@ -241,12 +243,12 @@ void NmeaForwarder::joinForwarding()
 {
     if (forwardingThread_.joinable())
         forwardingThread_.join();
+    running_.store(false);
 }
 
 bool NmeaForwarder::isRunning() const
 {
-    return forwardingThread_.joinable()
-        && !forwardingThread_.get_stop_token().stop_requested();
+    return running_.load();
 }
 
 void NmeaForwarder::forwardingThread(const NavigationStore& navigationStore,

@@ -5,6 +5,7 @@
 #ifndef JIMMY_PAPUTTO_NMEA_FORWARDER_HPP_
 #define JIMMY_PAPUTTO_NMEA_FORWARDER_HPP_
 
+#include <atomic>
 #include <string>
 #include <thread>
 #include <memory>
@@ -32,6 +33,7 @@ public:
     void startForwarding(const NavigationStore& navigationStore,
         Notifier& navigationNotifier);
     void stopForwarding();
+    // One joiner at a time; stopForwarding() and isRunning() may run alongside it.
     void joinForwarding();
 
     std::string getDevicePath() const { return devicePath_; }
@@ -57,6 +59,7 @@ private:
     std::string devicePath_;
     std::string ptyPath_;
     std::jthread forwardingThread_;
+    std::atomic<bool> running_{false};
 
     std::string lastEpoch_;
 };
