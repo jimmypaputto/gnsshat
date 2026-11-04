@@ -159,12 +159,3 @@ Edit the command-line arguments to set your NTRIP caster credentials.
 ```bash
 python ntrip_server.py --caster-host <HOST> --caster-port 2101 --mountpoint <MOUNT> --password <PWD>
 ```
-
-### 13. benchmark_25hz.py
-25 Hz measurement rate benchmark:
-- Measures frames/s received via `wait_and_get_fresh_navigation()` at 25 Hz
-- Outputs one ISO 8601 UTC time per line for post-processing
-
-```bash
-sudo python3 benchmark_25hz.py > /tmp/bench_py.csv
-```
