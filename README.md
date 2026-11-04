@@ -330,6 +330,11 @@ std::jthread worker([&hat](std::stop_token stop) {
 
 The library never installs signal handlers and never uses signals internally. Its internal threads block all asynchronous signals, so signals are delivered only to application threads. `shutdown()` is thread-safe; call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler. The examples show the pattern: `main` blocks SIGINT and SIGTERM before starting any thread, a dedicated thread takes them with `sigwait()` and calls `shutdown()`, and `main` keeps waiting for data until the waits return `std::nullopt` / `false`.
 
+Only one thread may call `joinForwardForGpsd()` at a time on a given instance
+(the same rule applies to C and Python). Another thread may stop forwarding or
+read its device path while the join is waiting. A join does not request a stop;
+repeated joins without restarting forwarding return immediately.
+
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
 HAT detection helpers in `JimmyPaputto::Hat`: `detectProduct()` (returns the HAT product name from the device-tree EEPROM without instantiating `IGnssHat`) and `readEepromField(field)` (generic EEPROM field reader).

@@ -77,6 +77,11 @@ Key API calls:
   does not need it — the destructor stops the forwarder and removes the
   virtual device
 
+Use only one joiner at a time per HAT. Another thread may stop forwarding or
+read the device path while the join is waiting. The join itself does not stop
+forwarding; calling it again after it has returned is harmless unless
+forwarding has been restarted.
+
 ## Daemon (jpgnss2gpsd-bridge)
 
 ## How it works

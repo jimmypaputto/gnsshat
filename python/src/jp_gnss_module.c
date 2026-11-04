@@ -3689,7 +3689,9 @@ static PyMethodDef GnssHat_methods[] = {
         (PyCFunction)GnssHat_join_forward_for_gpsd,
         METH_NOARGS,
         "Block until GPSD forwarding is stopped by stop_forward_for_gpsd(), "
-        "shutdown(), or close(). Releases the GIL."
+        "shutdown(), or close(). Releases the GIL. "
+        "Only one concurrent join call per instance is allowed; another "
+        "thread may stop forwarding or read its device path."
     },
     {
         "get_gpsd_device_path",

@@ -53,6 +53,9 @@ public:
     // shutdown(), or by the destruction of this instance.
     // Useful to park the main thread of a gpsd-only daemon; cleanup does not
     // need it, because destruction stops the forwarder.
+    // At most one call may be in progress per instance. Stopping forwarding
+    // and reading its device path from another thread are allowed. Repeated
+    // joins without restarting forwarding return immediately.
     virtual void joinForwardForGpsd() = 0;
     virtual std::string getGpsdDevicePath() const = 0;
 

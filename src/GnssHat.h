@@ -579,7 +579,10 @@ bool jp_gnss_hat_start_forward_for_gpsd(jp_gnss_hat_t* hat);
 void jp_gnss_hat_stop_forward_for_gpsd(jp_gnss_hat_t* hat);
 /* Blocks until gpsd forwarding is stopped: by
  * jp_gnss_hat_stop_forward_for_gpsd(), jp_gnss_hat_shutdown(), or
- * jp_gnss_hat_destroy(). */
+ * jp_gnss_hat_destroy().
+ * At most one join call may be in progress per handle. Another thread may
+ * stop forwarding or read its device path. Repeated joins without restarting
+ * forwarding return immediately. */
 void jp_gnss_hat_join_forward_for_gpsd(jp_gnss_hat_t* hat);
 /* Empty string while gpsd forwarding is not running. */
 const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat);

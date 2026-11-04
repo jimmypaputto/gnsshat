@@ -179,6 +179,11 @@ All examples in [examples/python](../examples/python) follow this pattern.
 blocked in `wait_and_get_fresh_*()` or `timepulse()` (they get `None` /
 `False`) and waits for in-progress calls before releasing the handle.
 
+Only one thread may call `join_forward_for_gpsd()` at a time per instance.
+Another thread may stop forwarding, read its device path or close the HAT
+while that call waits. The join does not request a stop; repeated joins on an
+open HAT without restarting forwarding return immediately.
+
 ## Module Functions and Constants
 
 ```python
