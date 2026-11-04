@@ -11,16 +11,19 @@
 #include <jimmypaputto/GnssHat.hpp>
 
 
-JimmyPaputto::GnssConfig createDefaultConfig()
+using namespace JimmyPaputto;
+
+
+GnssConfig createDefaultConfig()
 {
-    return JimmyPaputto::GnssConfig {
+    return GnssConfig {
         .measurementRate_Hz = 10,
-        .dynamicModel = JimmyPaputto::EDynamicModel::Stationary,
-        .timepulsePinConfig = JimmyPaputto::TimepulsePinConfig {
+        .dynamicModel = EDynamicModel::Stationary,
+        .timepulsePinConfig = TimepulsePinConfig {
             .active = true,
-            .fixedPulse = JimmyPaputto::TimepulsePinConfig::Pulse { 1, 0.1 },
+            .fixedPulse = TimepulsePinConfig::Pulse { 1, 0.1 },
             .pulseWhenNoFix = std::nullopt,
-            .polarity = JimmyPaputto::ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
+            .polarity = ETimepulsePinPolarity::RisingEdgeAtTopOfSecond
         },
         .geofencing = std::nullopt,
         .rtk = std::nullopt,
@@ -29,18 +32,18 @@ JimmyPaputto::GnssConfig createDefaultConfig()
 }
 
 // Returns false if the wait is stopped before the fix.
-static bool waitForFix(JimmyPaputto::IGnssHat& hat)
+static bool waitForFix(IGnssHat& hat)
 {
     while (const auto navigation = hat.waitAndGetFreshNavigation())
     {
-        if (navigation->pvt.fixStatus == JimmyPaputto::EFixStatus::Active)
+        if (navigation->pvt.fixStatus == EFixStatus::Active)
             return true;
     }
     return false;
 }
 
 // Returns false if the wait is stopped first.
-static bool waitForEpochs(JimmyPaputto::IGnssHat& hat, int count)
+static bool waitForEpochs(IGnssHat& hat, int count)
 {
     for (int i = 0; i < count; ++i)
     {
@@ -50,8 +53,7 @@ static bool waitForEpochs(JimmyPaputto::IGnssHat& hat, int count)
     return true;
 }
 
-static void measureStartups(JimmyPaputto::IGnssHat& ubxHat,
-    int measurementRate_Hz)
+static void measureStartups(IGnssHat& ubxHat, int measurementRate_Hz)
 {
     ubxHat.hardResetUbloxSom_ColdStart();
     auto start = std::chrono::high_resolution_clock::now();
@@ -78,7 +80,7 @@ static void measureStartups(JimmyPaputto::IGnssHat& ubxHat,
     printf("Hot start took %ld ms\r\n", time2fix);
 }
 
-std::thread signalsHandler(JimmyPaputto::IGnssHat& ubxHat)
+std::thread signalsHandler(IGnssHat& ubxHat)
 {
     sigset_t signals;
     sigemptyset(&signals);
@@ -99,8 +101,7 @@ std::thread signalsHandler(JimmyPaputto::IGnssHat& ubxHat)
 auto main() -> int
 {
     const auto gnssConfig = createDefaultConfig();
-    std::unique_ptr<JimmyPaputto::IGnssHat> ubxHat(
-        JimmyPaputto::IGnssHat::create());
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
     ubxHat->hardResetUbloxSom_ColdStart();
     const auto isStartupDone = ubxHat->start(gnssConfig);
     if (!isStartupDone)
