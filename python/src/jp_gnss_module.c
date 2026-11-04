@@ -4401,11 +4401,15 @@ static PyObject* NtripCaster_enter(NtripCasterObj* self, PyObject* args)
 
 static PyObject* NtripCaster_exit(NtripCasterObj* self, PyObject* args)
 {
-    if (self->caster)
+    jp_gnss_ntrip_caster_t* caster = self->caster;
+    self->caster = NULL;
+    if (caster)
     {
-        jp_gnss_ntrip_caster_stop(self->caster);
-        jp_gnss_ntrip_caster_destroy(self->caster);
-        self->caster = NULL;
+        /* Without the GIL: the threads being joined may need it to log. */
+        Py_BEGIN_ALLOW_THREADS
+        jp_gnss_ntrip_caster_stop(caster);
+        jp_gnss_ntrip_caster_destroy(caster);
+        Py_END_ALLOW_THREADS
     }
     Py_RETURN_NONE;
 }
@@ -4829,11 +4833,15 @@ static PyObject* NtripClient_enter(NtripClientObj* self, PyObject* args)
 
 static PyObject* NtripClient_exit(NtripClientObj* self, PyObject* args)
 {
-    if (self->client)
+    jp_gnss_ntrip_client_t* client = self->client;
+    self->client = NULL;
+    if (client)
     {
-        jp_gnss_ntrip_client_disconnect(self->client);
-        jp_gnss_ntrip_client_destroy(self->client);
-        self->client = NULL;
+        /* Without the GIL: the threads being joined may need it to log. */
+        Py_BEGIN_ALLOW_THREADS
+        jp_gnss_ntrip_client_disconnect(client);
+        jp_gnss_ntrip_client_destroy(client);
+        Py_END_ALLOW_THREADS
     }
     Py_RETURN_NONE;
 }
@@ -5265,11 +5273,15 @@ static PyObject* NtripServer_enter(NtripServerObj* self, PyObject* args)
 
 static PyObject* NtripServer_exit(NtripServerObj* self, PyObject* args)
 {
-    if (self->server)
+    jp_gnss_ntrip_server_t* server = self->server;
+    self->server = NULL;
+    if (server)
     {
-        jp_gnss_ntrip_server_disconnect(self->server);
-        jp_gnss_ntrip_server_destroy(self->server);
-        self->server = NULL;
+        /* Without the GIL: the threads being joined may need it to log. */
+        Py_BEGIN_ALLOW_THREADS
+        jp_gnss_ntrip_server_disconnect(server);
+        jp_gnss_ntrip_server_destroy(server);
+        Py_END_ALLOW_THREADS
     }
     Py_RETURN_NONE;
 }

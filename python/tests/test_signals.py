@@ -157,6 +157,26 @@ with gnsshat.GnssHat() as hat:
         # The reset blocks for over a second, so about 100 ticks fit in it.
         self.assertGreater(ticks, 20, output)
 
+    def test_leaving_an_ntrip_with_block_lets_threads_log(self):
+        # The handler of a connected client logs while it is being joined.
+        seconds, code, output = run_case(self.library, """
+import socket
+print("ready", flush=True)
+with gnsshat.NtripCaster("127.0.0.1", 21199, "X") as caster:
+    caster.set_log_level(3)
+    caster.set_log_callback(lambda level, message: None)
+    caster.start()
+    client = socket.create_connection(("127.0.0.1", 21199))
+    client.sendall(b"GET /X HTTP/1.1\\r\\nHost: localhost\\r\\n"
+                   b"Ntrip-Version: Ntrip/2.0\\r\\n"
+                   b"User-Agent: NTRIP test\\r\\n\\r\\n")
+    time.sleep(0.1)
+client.close()
+print("left", flush=True)
+""")
+        self.assertEqual(code, 0, output)
+        self.assertIn("left", output)
+
     def test_taken_timepulse_line_raises(self):
         seconds, code, output = run_case(self.library, """
 print("ready", flush=True)
