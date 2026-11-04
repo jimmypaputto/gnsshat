@@ -517,7 +517,7 @@ journalctl -u gnsshat-rtk-base -f
 
 ## Architecture
 
-The library is multi-threaded and thread-safe. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
+The library is multi-threaded. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. Thread safety covers the operations documented above, not arbitrary concurrent configuration or lifecycle changes. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
 
 | HAT | Threads | Data Flow |
 |-----|---------|-----------|
