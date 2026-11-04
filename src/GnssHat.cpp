@@ -14,7 +14,7 @@
 #include <thread>
 #include <type_traits>
 
-#include "common/BlockAllSignals.hpp"
+#include "common/ThreadingSignals.hpp"
 #include "ublox/GnssConfig.hpp"
 #include "ublox/NavigationStore.hpp"
 #include "ublox/NmeaForwarder.hpp"
@@ -553,7 +553,7 @@ bool GnssHat::start(const GnssConfig& config)
         txReady_->run();
     }
 
-    ubloxThread_ = startLibraryThread([this](std::stop_token stoken){
+    ubloxThread_ = createSignalFreeThread([this](std::stop_token stoken){
         while (!stoken.stop_requested())
         {
             ublox_->run(stoken);

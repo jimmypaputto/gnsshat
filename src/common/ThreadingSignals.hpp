@@ -2,8 +2,8 @@
  * Jimmy Paputto 2026
  */
 
-#ifndef JIMMY_PAPUTTO_BLOCK_ALL_SIGNALS_HPP_
-#define JIMMY_PAPUTTO_BLOCK_ALL_SIGNALS_HPP_
+#ifndef JIMMY_PAPUTTO_THREADING_SIGNALS_HPP_
+#define JIMMY_PAPUTTO_THREADING_SIGNALS_HPP_
 
 #include <pthread.h>
 #include <signal.h>
@@ -51,7 +51,7 @@ private:
 // take a signal meant for the application. The caller's mask is unchanged
 // once it returns.
 template<class Thread = std::jthread, class... Args>
-Thread startLibraryThread(Args&&... args)
+Thread createSignalFreeThread(Args&&... args)
 {
     const BlockAllSignals blocked;
     return Thread(std::forward<Args>(args)...);
@@ -59,4 +59,4 @@ Thread startLibraryThread(Args&&... args)
 
 }  // JimmyPaputto
 
-#endif  // JIMMY_PAPUTTO_BLOCK_ALL_SIGNALS_HPP_
+#endif  // JIMMY_PAPUTTO_THREADING_SIGNALS_HPP_

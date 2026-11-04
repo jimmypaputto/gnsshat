@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <sstream>
 
-#include "common/BlockAllSignals.hpp"
+#include "common/ThreadingSignals.hpp"
 #include "common/Utils.hpp"
 
 namespace JimmyPaputto
@@ -71,8 +71,8 @@ namespace JimmyPaputto
 
         running_ = true;
         statsStart();
-        acceptThread_ = startLibraryThread([this](std::stop_token st)
-                                           { acceptLoop(st); });
+        acceptThread_ = createSignalFreeThread([this](std::stop_token st)
+                                               { acceptLoop(st); });
 
         log(ENtripLogLevel::Info, "[NtripCaster] Listening on %s:%u/%s (max %zu clients)",
             host_.c_str(), port_, mountpoint_.c_str(), maxClients_);
@@ -249,7 +249,7 @@ namespace JimmyPaputto
             // Spawn tracked handler thread
             auto ht = std::make_unique<HandlerThread>();
             auto *htPtr = ht.get();
-            ht->thread = startLibraryThread<std::thread>(
+            ht->thread = createSignalFreeThread<std::thread>(
                 [this, clientFd, addr = std::move(addr), htPtr]()
                 {
                     handleClient(clientFd, addr);

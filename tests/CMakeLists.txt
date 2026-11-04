@@ -21,7 +21,7 @@ add_executable(GnssHatTests
     TestCApi.cpp
     TestNmeaForwarder.cpp
     TestNotifier.cpp
-    TestBlockAllSignals.cpp
+    TestThreadingSignals.cpp
 )
 set_target_properties(GnssHatTests PROPERTIES OUTPUT_NAME gnsshat-tests)
 

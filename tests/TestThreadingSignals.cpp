@@ -6,7 +6,7 @@
 #include <stop_token>
 #include <thread>
 
-#include "common/BlockAllSignals.hpp"
+#include "common/ThreadingSignals.hpp"
 
 using namespace JimmyPaputto;
 
@@ -42,7 +42,7 @@ void expectAsynchronousSignalsBlocked(const sigset_t& mask)
 }  // namespace
 
 // Runs in a thread of its own, so the test runner's mask stays untouched.
-TEST(BlockAllSignals, LibraryThreadBlocksSignalsAndCallerMaskIsRestored)
+TEST(ThreadingSignals, SignalFreeThreadBlocksSignalsAndCallerMaskIsRestored)
 {
     std::thread([] {
         // A signal the caller blocked itself must stay blocked afterwards,
@@ -54,11 +54,11 @@ TEST(BlockAllSignals, LibraryThreadBlocksSignalsAndCallerMaskIsRestored)
         const sigset_t before = currentMask();
 
         sigset_t inJthread;
-        startLibraryThread([&inJthread](std::stop_token) {
+        createSignalFreeThread([&inJthread](std::stop_token) {
             inJthread = currentMask();
         }).join();
         sigset_t inThread;
-        startLibraryThread<std::thread>([&inThread] {
+        createSignalFreeThread<std::thread>([&inThread] {
             inThread = currentMask();
         }).join();
 
@@ -70,7 +70,7 @@ TEST(BlockAllSignals, LibraryThreadBlocksSignalsAndCallerMaskIsRestored)
     }).join();
 }
 
-TEST(BlockAllSignals, RestoresMaskAtScopeEnd)
+TEST(ThreadingSignals, BlockAllSignalsRestoresMaskAtScopeEnd)
 {
     std::thread([] {
         const sigset_t before = currentMask();
