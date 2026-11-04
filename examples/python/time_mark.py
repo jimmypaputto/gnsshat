@@ -1,6 +1,5 @@
 # Jimmy Paputto 2026
 
-import signal
 import threading
 
 from jimmypaputto import gnsshat
@@ -35,46 +34,32 @@ def toggle_thread_func(hat):
         epoch += 1
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
 def main():
-    with gnsshat.GnssHat() as hat:
-        hat.soft_reset_hot_start()
+    try:
+        with gnsshat.GnssHat() as hat:
+            hat.soft_reset_hot_start()
 
-        if not hat.start(create_config()):
-            print("Startup failed, exit")
-            return -1
+            if not hat.start(create_config()):
+                print("Startup failed, exit")
+                return -1
 
-        print("Startup done, ublox configured")
+            print("Startup done, ublox configured")
 
-        hat.enable_time_mark_trigger()
-        print("TimeMark trigger enabled, toggling EXTINT every 5s\n")
+            hat.enable_time_mark_trigger()
+            print("TimeMark trigger enabled, toggling EXTINT every 5s\n")
 
-        signals_interrupt = signals_handler(hat)
-        # After signals_handler(): the toggle thread inherits the blocked
-        # signals.
-        toggle = threading.Thread(target=toggle_thread_func, args=(hat,))
-        toggle.start()
-        while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
-            print(tm)
-
-        signals_interrupt.join()
-        toggle.join()
-        hat.disable_time_mark_trigger()
+            toggle = threading.Thread(target=toggle_thread_func, args=(hat,))
+            toggle.start()
+            try:
+                while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
+                    print(tm)
+            finally:
+                # Ends the wait in the toggle thread.
+                hat.shutdown()
+                toggle.join()
+                hat.disable_time_mark_trigger()
+    except KeyboardInterrupt:
+        print("\nStopping time mark monitoring...")
 
     print("Exiting...")
     return 0

@@ -175,29 +175,7 @@ auto main() -> int
 ### Python
 
 ```python
-import signal
-import threading
-
 from jimmypaputto import gnsshat
-
-# Ctrl+C / SIGTERM call hat.shutdown(), which ends the wait loop below.
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in main; the new thread inherits the mask.
-    # Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-hat = gnsshat.GnssHat()
-hat.soft_reset_hot_start()
 
 config = {
     'measurement_rate_hz': 1,
@@ -210,16 +188,17 @@ config = {
     'geofencing': None
 }
 
-if not hat.start(config):
-    print("Failed to start GNSS")
-    exit(1)
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.soft_reset_hot_start()
+        if not hat.start(config):
+            print("Failed to start GNSS")
+            exit(1)
 
-signals_interrupt = signals_handler(hat)
-while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-    print(nav)
-
-signals_interrupt.join()
-hat.close()
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print(nav)
+except KeyboardInterrupt:
+    print("Exiting...")
 ```
 
 ### C
@@ -329,7 +308,7 @@ std::jthread worker([&hat](std::stop_token stop) {
 // declared after `hat`: the worker is stopped and joined first
 ```
 
-The library never installs signal handlers and never uses signals internally. Its internal threads block all asynchronous signals, so signals are delivered only to application threads. `shutdown()` is thread-safe; call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler. The examples show the pattern: `main` blocks SIGINT and SIGTERM before starting any thread, a dedicated thread takes them with `sigwait()` and calls `shutdown()`, and `main` keeps waiting for data until the waits return `std::nullopt` / `false`.
+The library never installs signal handlers and never uses signals internally. Its internal threads block all asynchronous signals, so signals are delivered only to application threads. `shutdown()` is thread-safe; call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler. The C and C++ examples show the pattern: `main` blocks SIGINT and SIGTERM before starting any thread, a dedicated thread takes them with `sigwait()` and calls `shutdown()`, and `main` keeps waiting for data until the waits return `std::nullopt` / `false`. In Python none of this is needed: signal handlers run during the waits, so Ctrl+C simply raises `KeyboardInterrupt` (see [python/README.md](python/README.md#ctrlc-and-signals)).
 
 Only one thread may call `joinForwardForGpsd()` at a time on a given instance
 (the same rule applies to C and Python). Another thread may stop forwarding or

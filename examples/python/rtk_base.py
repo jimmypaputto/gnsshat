@@ -14,8 +14,6 @@
 #
 
 import argparse
-import signal
-import threading
 
 from jimmypaputto import gnsshat
 
@@ -128,22 +126,6 @@ def print_rtcm3_frame(frame: bytes, time_str: str):
     print(f"[{time_str}] Frame {msg_id}: {len(frame)} bytes: {hex_str}")
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
 def main():
     parser = argparse.ArgumentParser(description="RTK Base Station with NTRIP Caster")
     parser.add_argument("--port", type=int, default=2101,
@@ -152,50 +134,51 @@ def main():
                         help="NTRIP mountpoint name (default: GNSS_HAT)")
     args = parser.parse_args()
 
-    hat = gnsshat.GnssHat()
-    hat.soft_reset_hot_start()
+    try:
+        with (
+            gnsshat.GnssHat() as hat,
+            gnsshat.NtripCaster("0.0.0.0", args.port, args.mountpoint) as caster,
+        ):
+            hat.soft_reset_hot_start()
 
-    # Use Survey-In mode by default.
-    # Alternatively try: create_fixed_position_lla_config()
-    #                 or: create_fixed_position_ecef_config()
-    is_startup_done = hat.start(create_survey_in_config())
-    if not is_startup_done:
-        print("Failed to start GNSS")
-        return -1
+            # Use Survey-In mode by default.
+            # Alternatively try: create_fixed_position_lla_config()
+            #                 or: create_fixed_position_ecef_config()
+            if not hat.start(create_survey_in_config()):
+                print("Failed to start GNSS")
+                return -1
 
-    print("GNSS started as RTK Base (Survey-In mode).")
-    print("Waiting for corrections...\n")
+            print("GNSS started as RTK Base (Survey-In mode).")
+            print("Waiting for corrections...\n")
 
-    caster = gnsshat.NtripCaster("0.0.0.0", args.port, args.mountpoint)
-    caster.start()
+            caster.start()
 
-    signals_interrupt = signals_handler(hat)
-    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-        fix_type = gnsshat.FixType(nav.pvt.fix_type)
+            while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+                fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
-        if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
-            print(f"Fix type: {fix_type.name}, "
-                  f"waiting for TIME_ONLY_FIX for RTK Base")
-        else:
-            print("\nRTK Base ready with TIME_ONLY_FIX")
-            corrections = hat.rtk_get_full_corrections()
-            if not corrections:
-                print("RTK corrections not available yet")
-                continue
+                if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
+                    print(f"Fix type: {fix_type.name}, "
+                          f"waiting for TIME_ONLY_FIX for RTK Base")
+                    continue
 
-            for frame in corrections:
-                print_rtcm3_frame(frame, str(nav.pvt.utc_time))
+                print("\nRTK Base ready with TIME_ONLY_FIX")
+                corrections = hat.rtk_get_full_corrections()
+                if not corrections:
+                    print("RTK corrections not available yet")
+                    continue
 
-            caster.feed(corrections)
-            caster.update_position(
-                nav.pvt.latitude, nav.pvt.longitude)
+                for frame in corrections:
+                    print_rtcm3_frame(frame, str(nav.pvt.utc_time))
 
-            clients = caster.client_count()
-            if clients > 0:
-                print(f"Broadcasting to {clients} client(s)")
+                caster.feed(corrections)
+                caster.update_position(
+                    nav.pvt.latitude, nav.pvt.longitude)
 
-    signals_interrupt.join()
-    caster.stop()
+                clients = caster.client_count()
+                if clients > 0:
+                    print(f"Broadcasting to {clients} client(s)")
+    except KeyboardInterrupt:
+        print("\nStopping RTK Base monitoring...")
 
     print("Program finished")
     return 0

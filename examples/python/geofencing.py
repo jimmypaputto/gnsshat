@@ -1,8 +1,5 @@
 # Jimmy Paputto 2025
 
-import signal
-import threading
-
 from jimmypaputto import gnsshat
 
 
@@ -99,40 +96,22 @@ def print_geofencing(geofencing):
         print(f"      Geofence no {i+1}: {status_str}")
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
 def main():
-    ubx_hat = gnsshat.GnssHat()
-    ubx_hat.soft_reset_hot_start()
+    try:
+        with gnsshat.GnssHat() as ubx_hat:
+            ubx_hat.soft_reset_hot_start()
 
-    is_startup_done = ubx_hat.start(create_default_config())
-    if not is_startup_done:
-        print("Startup failed, exit")
-        return -1
+            if not ubx_hat.start(create_default_config()):
+                print("Startup failed, exit")
+                return -1
 
-    print("Startup done, ublox configured")
+            print("Startup done, ublox configured")
 
-    signals_interrupt = signals_handler(ubx_hat)
-    while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
-        geofencing = navigation.geofencing
-        print_geofencing(geofencing)
-        print()  # Empty line for readability
-
-    signals_interrupt.join()
+            while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
+                print_geofencing(navigation.geofencing)
+                print()  # Empty line for readability
+    except KeyboardInterrupt:
+        print("\nStopping geofencing monitoring...")
 
     print("Program finished")
     return 0

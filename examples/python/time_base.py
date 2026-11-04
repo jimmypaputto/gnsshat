@@ -14,8 +14,6 @@
 #   - Fixed Position (ECEF): Provide known ECEF coordinates
 #
 
-import signal
-import threading
 
 from jimmypaputto import gnsshat
 
@@ -114,49 +112,32 @@ def create_fixed_position_ecef_config() -> dict:
     }
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
 def main():
-    hat = gnsshat.GnssHat()
-    hat.soft_reset_hot_start()
+    try:
+        with gnsshat.GnssHat() as hat:
+            hat.soft_reset_hot_start()
 
-    # Use Survey-In mode by default.
-    # Alternatively try: create_fixed_position_lla_config()
-    #                 or: create_fixed_position_ecef_config()
-    is_startup_done = hat.start(create_survey_in_config())
-    if not is_startup_done:
-        print("Failed to start GNSS")
-        return -1
+            # Use Survey-In mode by default.
+            # Alternatively try: create_fixed_position_lla_config()
+            #                 or: create_fixed_position_ecef_config()
+            if not hat.start(create_survey_in_config()):
+                print("Failed to start GNSS")
+                return -1
 
-    print("GNSS started with time base configuration.")
-    print("Waiting for TimeOnlyFix...\n")
+            print("GNSS started with time base configuration.")
+            print("Waiting for TimeOnlyFix...\n")
 
-    signals_interrupt = signals_handler(hat)
-    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-        fix_type = gnsshat.FixType(nav.pvt.fix_type)
-        time_iso = gnsshat.utc_time_iso8601(nav)
+            while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+                fix_type = gnsshat.FixType(nav.pvt.fix_type)
+                time_iso = gnsshat.utc_time_iso8601(nav)
 
-        print(f"[{time_iso}] Fix: {fix_type.name}  "
-              f"tAcc: {nav.pvt.utc_time.accuracy} ns  "
-              f"Lat: {nav.pvt.latitude:.7f}  "
-              f"Lon: {nav.pvt.longitude:.7f}  "
-              f"Alt: {nav.pvt.altitude_msl:.2f} m")
-
-    signals_interrupt.join()
+                print(f"[{time_iso}] Fix: {fix_type.name}  "
+                      f"tAcc: {nav.pvt.utc_time.accuracy} ns  "
+                      f"Lat: {nav.pvt.latitude:.7f}  "
+                      f"Lon: {nav.pvt.longitude:.7f}  "
+                      f"Alt: {nav.pvt.altitude_msl:.2f} m")
+    except KeyboardInterrupt:
+        print("\nStopping time base monitoring...")
 
     print("Program finished")
     return 0

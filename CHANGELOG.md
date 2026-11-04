@@ -71,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the process was lost whenever stdout was not a terminal (systemd, Docker,
   ROS launch), because it was buffered. It now goes to stderr and names the
   detected product
+- Ctrl+C did not end a Python `wait_and_get_fresh_*()`, `timepulse()` or
+  `join_forward_for_gpsd()` until the next event, and never without data,
+  because Python signal handlers run only between bytecodes. These calls now
+  run them while they wait, so `KeyboardInterrupt` ends them within 100 ms
+- Python calls that can block, such as `start()` and the resets, held the GIL
+  and froze every other Python thread. They now release it
+- Leaving the `with` block of a Python NTRIP class could hang when a thread was
+  logging through a Python callback, because the threads were joined with the
+  GIL held. They are now joined without it
 - `enableTimepulse()` terminated the process when GPIO 5 was taken, e.g. by the
   kernel PPS driver, although it returns `bool` and Python documents a
   `RuntimeError`. It now returns `false`, and Python raises

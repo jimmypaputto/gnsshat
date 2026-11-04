@@ -2,15 +2,11 @@
 
 This directory contains Python examples demonstrating how to use the GNSS HAT library.
 
-Ctrl+C and SIGTERM are handled the same way in every example: the main thread
-blocks both signals, a separate thread takes them with `signal.sigwait()` and
-calls `hat.shutdown()`, and the main thread's `wait_and_get_fresh_*()` /
-`timepulse()` loop then ends with `None` / `False`. A Python signal handler
-would only run once the native wait returns, so it could not end a wait on
-which no data arrives. The signal thread is joined before the HAT is closed.
-Only `hot_start.py` ends by itself, so it wakes that thread with
-`signal.pthread_kill()`; the `is_alive()` check there matters before Python
-3.13, where a finished thread's id may be reused.
+Every example stops on Ctrl+C: it raises `KeyboardInterrupt`, also while
+`wait_and_get_fresh_*()` or `timepulse()` is blocking, and leaving the `with`
+block then releases the HAT. SIGTERM keeps Python's default and ends the process
+at once; [Ctrl+C and signals](../../python/README.md#ctrlc-and-signals) shows
+how a service makes it behave like Ctrl+C.
 
 ## Prerequisites
 

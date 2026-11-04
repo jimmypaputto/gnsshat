@@ -13,8 +13,6 @@
 
 
 import argparse
-import signal
-import threading
 
 from jimmypaputto import gnsshat
 
@@ -40,22 +38,6 @@ def create_config() -> dict:
     }
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
 class NtripRover:
     """
     RTK Rover that connects to an NTRIP caster, receives RTCM3
@@ -64,8 +46,6 @@ class NtripRover:
 
     def __init__(self, host: str, port: int, mountpoint: str,
                  username: str = "", password: str = ""):
-        self._ntrip_client: gnsshat.NtripClient | None = None
-        self._hat: gnsshat.GnssHat | None = None
         self._host = host
         self._port = port
         self._mountpoint = mountpoint
@@ -73,8 +53,7 @@ class NtripRover:
         self._password = password
 
     def start_gnss(self) -> bool:
-        """Initialize and start the GNSS receiver in rover mode"""
-        self._hat = gnsshat.GnssHat()
+        """Start the GNSS receiver in rover mode"""
         self._hat.soft_reset_hot_start()
 
         if not self._hat.start(create_config()):
@@ -88,10 +67,6 @@ class NtripRover:
         """Connect the native NTRIP client."""
         print(f"Connecting to NTRIP caster: "
               f"{self._host}:{self._port}/{self._mountpoint}")
-
-        self._ntrip_client = gnsshat.NtripClient(
-            self._host, self._port, self._mountpoint,
-            self._username, self._password)
 
         try:
             self._ntrip_client.connect()
@@ -114,35 +89,31 @@ class NtripRover:
 
     def run(self):
         """Main loop — prints navigation status at each epoch"""
-        if not self.start_gnss():
-            return -1
-        if not self.start_ntrip():
-            return -1
+        with (
+            gnsshat.GnssHat() as self._hat,
+            gnsshat.NtripClient(
+                self._host, self._port, self._mountpoint,
+                self._username, self._password) as self._ntrip_client,
+        ):
+            if not self.start_gnss():
+                return -1
+            if not self.start_ntrip():
+                return -1
 
-        print("Monitoring RTK fix quality (Ctrl+C to stop)...\n")
+            print("Monitoring RTK fix quality (Ctrl+C to stop)...\n")
 
-        signals_interrupt = signals_handler(self._hat)
-        while (nav := self._hat.wait_and_get_fresh_navigation()) is not None:
-            self._apply_corrections()
-            fix_quality = gnsshat.FixQuality(nav.pvt.fix_quality)
-            fix_type = gnsshat.FixType(nav.pvt.fix_type)
+            while (nav := self._hat.wait_and_get_fresh_navigation()) is not None:
+                self._apply_corrections()
+                fix_quality = gnsshat.FixQuality(nav.pvt.fix_quality)
+                fix_type = gnsshat.FixType(nav.pvt.fix_type)
 
-            print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] "
-                  f"{fix_quality.name} ({fix_type.name})  "
-                  f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}  "
-                  f"alt={nav.pvt.altitude_msl:.1f}m  "
-                  f"sats={nav.pvt.visible_satellites}")
+                print(f"[{gnsshat.utc_time_iso8601(nav.pvt)}] "
+                      f"{fix_quality.name} ({fix_type.name})  "
+                      f"{nav.pvt.latitude:.6f}, {nav.pvt.longitude:.6f}  "
+                      f"alt={nav.pvt.altitude_msl:.1f}m  "
+                      f"sats={nav.pvt.visible_satellites}")
 
-        signals_interrupt.join()
-        self.stop()
-
-        print("Program finished.")
         return 0
-
-    def stop(self):
-        """Disconnect NTRIP client and clean up."""
-        if self._ntrip_client is not None:
-            self._ntrip_client.disconnect()
 
 
 def main():
@@ -161,7 +132,11 @@ def main():
 
     rover = NtripRover(args.host, args.port, args.mountpoint,
                        args.user, args.password)
-    return rover.run()
+    try:
+        return rover.run()
+    except KeyboardInterrupt:
+        print("\nStopping RTK Rover...")
+        return 0
 
 
 if __name__ == "__main__":

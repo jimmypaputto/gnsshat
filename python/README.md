@@ -108,27 +108,27 @@ config = {
 |--------|-------------|
 | `start(config)` | Configure and start the GNSS module. Returns `True` on success, `False` if the config is rejected or startup fails. Raises `TypeError` / `ValueError` for a malformed config dict. |
 | `get_navigation()` | Get current navigation data (non-blocking). |
-| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL. Returns `None` once the waits are stopped by `shutdown()` or `close()`. |
+| `wait_and_get_fresh_navigation()` | Block until new navigation data arrives. Releases GIL; Ctrl+C raises `KeyboardInterrupt`. Returns `None` once the waits are stopped by `shutdown()` or `close()`. |
 | `name()` | Get detected HAT name (e.g. `'L1/L5 GNSS TIME HAT'`). |
 | `soft_reset_hot_start()` | Software reset — preserves almanac/ephemeris for fast TTFF. |
 | `hard_reset_cold_start()` | Hardware reset — full cold start. |
-| `enable_timepulse()` | Enable 1PPS output on GPIO 5. |
+| `enable_timepulse()` | Enable 1PPS output on GPIO 5. Raises `RuntimeError` if the line is taken, e.g. by the kernel PPS driver. |
 | `disable_timepulse()` | Disable 1PPS output. |
-| `timepulse()` | Block until next 1PPS interrupt. Releases GIL. Returns `True`, or `False` when the timepulse is not enabled or the waits are stopped. |
+| `timepulse()` | Block until next 1PPS interrupt. Releases GIL; Ctrl+C raises `KeyboardInterrupt`. Returns `True`, or `False` when the timepulse is not enabled or the waits are stopped. |
 | `start_forward_for_gpsd()` | Start NMEA forwarding to a virtual TTY for gpsd. |
 | `stop_forward_for_gpsd()` | Stop NMEA forwarding. |
-| `join_forward_for_gpsd()` | Block until forwarding is stopped by `stop_forward_for_gpsd()`, `shutdown()`, or `close()`. Releases GIL. |
+| `join_forward_for_gpsd()` | Block until forwarding is stopped by `stop_forward_for_gpsd()`, `shutdown()`, or `close()`. Releases GIL; Ctrl+C raises `KeyboardInterrupt`. |
 | `get_gpsd_device_path()` | Get the virtual TTY path (e.g. `/dev/pts/3`). Returns `None` if not active. |
 | `rtk_get_full_corrections()` | Get full RTCM3 correction frames from RTK base. Returns `list[bytes]`, empty until the base has data. Raises `RuntimeError` if the HAT is not an RTK base. |
 | `rtk_get_tiny_corrections()` | Get compact RTCM3 correction frames from RTK base. Returns `list[bytes]`, empty until the base has data. Raises `RuntimeError` if the HAT is not an RTK base. |
 | `rtk_get_rtcm3_frame(msg_id)` | Get a specific RTCM3 frame by message ID. Returns `bytes`. |
 | `rtk_apply_corrections(frames)` | Send RTCM3 correction frames to RTK rover. Takes `list[bytes]`. |
 | `get_time_mark()` | Get current time mark data (non-blocking). Returns `TimeMark` or `None`. |
-| `wait_and_get_fresh_time_mark()` | Block until new time mark event arrives. Releases GIL. Returns `None` when the HAT has no time mark input or the waits are stopped. |
+| `wait_and_get_fresh_time_mark()` | Block until new time mark event arrives. Releases GIL; Ctrl+C raises `KeyboardInterrupt`. Returns `None` when the HAT has no time mark input or the waits are stopped. |
 | `enable_time_mark_trigger()` | Enable EXTINT pin (GPIO 17) as output for software-triggered time marks. |
 | `disable_time_mark_trigger()` | Disable EXTINT trigger. |
 | `trigger_time_mark(edge)` | Trigger a time mark event. Optional `TimeMarkTriggerEdge` arg (default `TOGGLE`). |
-| `shutdown()` | Stop all waits and gpsd forwarding for good: the waits return `None` / `False` and `start()` returns `False` from then on. Releases GIL. Thread-safe and idempotent; call it from a thread waiting in `signal.sigwait()`, not from a signal handler. Does not close the HAT: join the threads that use it, then `close()`. |
+| `shutdown()` | Stop all waits and gpsd forwarding for good: the waits return `None` / `False` and `start()` returns `False` from then on. Releases GIL. Idempotent; safe from another thread and from a Python signal handler. Does not close the HAT: join the threads that use it, then `close()`. |
 | `close()` | Stop the waits and gpsd forwarding and release the HAT. Threads blocked in `wait_and_get_fresh_*()` or `timepulse()` get `None` / `False`. Idempotent. |
 | `closed` | `True` once `close()` has been called. Any other method then raises `RuntimeError`. |
 
@@ -143,38 +143,6 @@ with gnsshat.GnssHat() as hat:
 # close() stopped GPSD forwarding, disabled timepulse and released the HAT
 ```
 
-To end such a loop on Ctrl+C or `systemctl stop`, block SIGINT and SIGTERM in
-the main thread and call `shutdown()` from a thread that takes them with
-`signal.sigwait()`. A Python signal handler would not run while the main thread
-waits inside the library, even though the wait releases the GIL:
-
-```python
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in main; the new thread inherits the mask.
-    # Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-with gnsshat.GnssHat() as hat:
-    hat.start(config)
-    signals_interrupt = signals_handler(hat)
-    while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-        print(nav.pvt.latitude, nav.pvt.longitude)
-
-    signals_interrupt.join()  # before close()
-```
-
-All examples in [examples/python](../examples/python) follow this pattern.
-
 `close()` may be called while other threads use the HAT: it wakes the ones
 blocked in `wait_and_get_fresh_*()` or `timepulse()` (they get `None` /
 `False`) and waits for in-progress calls before releasing the handle.
@@ -183,6 +151,42 @@ Only one thread may call `join_forward_for_gpsd()` at a time per instance.
 Another thread may stop forwarding, read its device path or close the HAT
 while that call waits. The join does not request a stop; repeated joins on an
 open HAT without restarting forwarding return immediately.
+
+## Ctrl+C and signals
+
+The blocking calls (`wait_and_get_fresh_*()`, `timepulse()`,
+`join_forward_for_gpsd()`) behave like `time.sleep()`: they release the GIL and
+Python signal handlers run while they wait, at most 100 ms after the signal.
+Ctrl+C therefore raises `KeyboardInterrupt`, and leaving the `with` block
+releases the HAT, even when no data is arriving:
+
+```python
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.start(config)
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print(nav.pvt.latitude, nav.pvt.longitude)
+except KeyboardInterrupt:
+    print("Stopped")
+```
+
+The module installs no signal handlers. By default Python dies on SIGTERM
+without cleaning up, so a service should make it behave like Ctrl+C:
+
+```python
+signal.signal(signal.SIGTERM, signal.default_int_handler)
+```
+
+A handler runs as ordinary Python code in the main thread, so it may call
+`hat.shutdown()` or `hat.close()`. Only the main thread gets the exception: end
+the waits of worker threads with `shutdown()` and join them before leaving the
+`with` block.
+
+Every other call that can block (`start()`, the resets, enabling and disabling)
+also releases the GIL, so other Python threads keep running. Calls that must not
+overlap wait for each other, and Ctrl+C takes effect when the call returns.
+
+All examples in [examples/python](../examples/python) follow this pattern.
 
 ## Module Functions and Constants
 

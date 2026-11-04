@@ -14,27 +14,9 @@
 #
 
 import argparse
-import signal
 import sys
-import threading
 
 from jimmypaputto import gnsshat
-
-
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
 
 
 def log_callback(level, message):
@@ -80,48 +62,53 @@ def main():
         },
     }
 
-    hat = gnsshat.GnssHat()
-    if not hat.start(config):
-        print('Failed to start GNSS', file=sys.stderr)
-        sys.exit(1)
+    with (
+        gnsshat.GnssHat() as hat,
+        gnsshat.NtripServer(
+            host=args.caster_host,
+            port=args.caster_port,
+            mountpoint=args.mountpoint,
+            username=args.username,
+            password=args.password,
+        ) as server,
+    ):
+        if not hat.start(config):
+            print('Failed to start GNSS', file=sys.stderr)
+            return 1
 
-    # ── Connect NtripServer to remote caster ────────────────────────
-    server = gnsshat.NtripServer(
-        host=args.caster_host,
-        port=args.caster_port,
-        mountpoint=args.mountpoint,
-        username=args.username,
-        password=args.password,
-    )
-    server.set_log_callback(log_callback)
-    server.set_log_level(2)  # Info
-    server.set_auto_reconnect(True, 1000, 30000)
+        # ── Connect NtripServer to remote caster ────────────────────────
+        server.set_log_callback(log_callback)
+        server.set_log_level(2)  # Info
+        server.set_auto_reconnect(True, 1000, 30000)
 
-    if not server.connect():
-        print('Failed to connect to remote caster', file=sys.stderr)
-        sys.exit(1)
+        try:
+            server.connect()
+        except RuntimeError as error:
+            print(f'Failed to connect to remote caster: {error}',
+                  file=sys.stderr)
+            return 1
 
-    print(f'Connected to {args.caster_host}:{args.caster_port}'
-          f'/{args.mountpoint}')
+        print(f'Connected to {args.caster_host}:{args.caster_port}'
+              f'/{args.mountpoint}')
 
-    # ── Main loop: forward corrections ──────────────────────────────
-    signals_interrupt = signals_handler(hat)
-    while hat.wait_and_get_fresh_navigation() is not None:
-        corrections = hat.rtk_get_full_corrections()  # [] until ready
-        if corrections:
-            server.feed(corrections)
+        # ── Main loop: forward corrections ──────────────────────────────
+        try:
+            while hat.wait_and_get_fresh_navigation() is not None:
+                corrections = hat.rtk_get_full_corrections()  # [] until ready
+                if corrections:
+                    server.feed(corrections)
+        finally:
+            stats = server.get_stats()
+            print(f'\nSession stats: {stats["bytes_tx"]} bytes TX, '
+                  f'{stats["frames_tx"]} frames TX, '
+                  f'{stats["uptime_ms"] / 1000:.1f}s uptime')
 
-    signals_interrupt.join()
-
-    # ── Cleanup ─────────────────────────────────────────────────────
-    stats = server.get_stats()
-    print(f'\nSession stats: {stats["bytes_tx"]} bytes TX, '
-          f'{stats["frames_tx"]} frames TX, '
-          f'{stats["uptime_ms"] / 1000:.1f}s uptime')
-
-    server.disconnect()
     print('Disconnected.')
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print('Disconnected.')

@@ -1,9 +1,7 @@
 # Jimmy Paputto 2025
 
 import os
-import signal
 import sys
-import threading
 import time
 
 from jimmypaputto import gnsshat
@@ -42,15 +40,7 @@ def wait_for_fix(gnss_hat, timeout_seconds=600):
     return False
 
 
-def wait_for_epochs(gnss_hat, count):
-    """Wait for `count` navigation epochs. False once the waits are stopped."""
-    for _ in range(count):
-        if gnss_hat.wait_and_get_fresh_navigation() is None:
-            return False
-    return True
-
-
-def measure_startups(hat, measurement_rate_hz):
+def measure_startups(hat):
     print("\n--- COLD START TEST ---")
     print("Performing hard reset (cold start)...")
     hat.hard_reset_cold_start()
@@ -68,8 +58,7 @@ def measure_startups(hat, measurement_rate_hz):
     print(
         "\nWaiting 40 seconds to collect satellite data for hot start..."
     )
-    if not wait_for_epochs(hat, 40 * measurement_rate_hz):
-        return 1
+    time.sleep(40)
 
     print("\n--- HOT START TEST ---")
     print("Performing soft reset (hot start)...")
@@ -97,22 +86,6 @@ def measure_startups(hat, measurement_rate_hz):
     return 0
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
-
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
 def main():
     print("This example compares cold start vs hot start performance")
 
@@ -127,14 +100,7 @@ def main():
 
         print("GNSS HAT started successfully!")
 
-        signals_interrupt = signals_handler(hat)
-
-        result = measure_startups(hat, gnss_config['measurement_rate_hz'])
-
-        # Wakes sigwait when the measurement ends without a signal.
-        if signals_interrupt.is_alive():
-            signal.pthread_kill(signals_interrupt.ident, signal.SIGINT)
-        signals_interrupt.join()
+        result = measure_startups(hat)
 
     if result == 0:
         print("\nExample completed successfully")

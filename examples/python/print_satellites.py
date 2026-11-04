@@ -1,8 +1,5 @@
 # Jimmy Paputto 2026
 
-import signal
-import threading
-
 from jimmypaputto import gnsshat
 
 
@@ -88,37 +85,18 @@ def print_satellites(nav):
     print()
 
 
-def signals_handler(hat):
-    signals = {signal.SIGINT, signal.SIGTERM}
-    # Blocks the signals in the calling thread (main); the new thread
-    # inherits the mask. Library threads block them on their own.
-    signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.soft_reset_hot_start()
+        if not hat.start(create_config()):
+            print("Failed to start GNSS HAT, exiting...")
+            exit(1)
+        print("GNSS HAT started successfully!")
 
-    def wait_for_signal():
-        signal.sigwait(signals)
-        hat.shutdown()
-
-    # A daemon: an exception in main must not leave the process waiting here.
-    thread = threading.Thread(target=wait_for_signal, daemon=True)
-    thread.start()
-    return thread
-
-
-hat = gnsshat.GnssHat()
-hat.soft_reset_hot_start()
-is_startup_done = hat.start(create_config())
-if is_startup_done:
-    print("GNSS HAT started successfully!")
-else:
-    print("Failed to start GNSS HAT, exiting...")
-    exit(1)
-
-signals_interrupt = signals_handler(hat)
-while (nav := hat.wait_and_get_fresh_navigation()) is not None:
-    print("\033[2J\033[H", end="")  # clear terminal
-    print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
-    print()
-    print_satellites(nav)
-
-signals_interrupt.join()
-print("Exiting...")
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print("\033[2J\033[H", end="")  # clear terminal
+            print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
+            print()
+            print_satellites(nav)
+except KeyboardInterrupt:
+    print("Exiting...")
