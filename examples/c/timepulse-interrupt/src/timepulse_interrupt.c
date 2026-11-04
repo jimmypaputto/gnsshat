@@ -12,6 +12,8 @@
 
 
 #define PULSE_RATE_HZ 5
+/* Part of the pulse period the pulse lasts: 10% of 200 ms is 20 ms. */
+#define PULSE_WIDTH_RATIO 0.1f
 
 jp_gnss_gnss_config_t create_config()
 {
@@ -23,10 +25,10 @@ jp_gnss_gnss_config_t create_config()
 
     config.timepulse_pin_config.active = true;
     config.timepulse_pin_config.fixed_pulse.frequency = PULSE_RATE_HZ;
-    config.timepulse_pin_config.fixed_pulse.pulse_width = 0.1f;
+    config.timepulse_pin_config.fixed_pulse.pulse_width = PULSE_WIDTH_RATIO;
     config.timepulse_pin_config.has_pulse_when_no_fix = true;
     config.timepulse_pin_config.pulse_when_no_fix.frequency = PULSE_RATE_HZ;
-    config.timepulse_pin_config.pulse_when_no_fix.pulse_width = 0.1f;
+    config.timepulse_pin_config.pulse_when_no_fix.pulse_width = PULSE_WIDTH_RATIO;
     config.timepulse_pin_config.polarity =
         JP_GNSS_TIMEPULSE_POLARITY_RISING_EDGE;
 

@@ -10,6 +10,8 @@
 #include <jimmypaputto/GnssHat.hpp>
 
 #define PULSE_RATE_HZ 5
+// Part of the pulse period the pulse lasts: 10% of 200 ms is 20 ms.
+#define PULSE_WIDTH_RATIO 0.1f
 
 
 using namespace JimmyPaputto;
@@ -17,7 +19,7 @@ using namespace JimmyPaputto;
 GnssConfig createDefaultConfig()
 {
     const auto pulse = TimepulsePinConfig::Pulse {
-        PULSE_RATE_HZ, 0.1
+        PULSE_RATE_HZ, PULSE_WIDTH_RATIO
     };
     return GnssConfig {
         .measurementRate_Hz = PULSE_RATE_HZ,
