@@ -43,6 +43,16 @@ else()
     )
 endif()
 
+if(BUILD_TESTS)
+    # Skipped unless GNSSHAT_HW_TESTS is set: it needs a real HAT.
+    add_test(NAME PythonSignals
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_signals.py
+            $<TARGET_FILE:gnsshat_python>
+    )
+    set_tests_properties(PythonSignals PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
 # System-wide installation (consistent with C library in /usr/local/lib)
 execute_process(
     COMMAND ${Python3_EXECUTABLE} -c "import sysconfig; print(sysconfig.get_path('platlib', vars={'base': '/usr', 'platbase': '/usr'}))"
