@@ -49,17 +49,10 @@ jp_gnss_gnss_config_t create_config()
     return config;
 }
 
-static void termination_signals(sigset_t* signals)
-{
-    sigemptyset(signals);
-    sigaddset(signals, SIGINT);
-    sigaddset(signals, SIGTERM);
-}
+static sigset_t signals;  /* SIGINT and SIGTERM */
 
 static void* wait_for_signal(void* gnss)
 {
-    sigset_t signals;
-    termination_signals(&signals);
     int received;
     sigwait(&signals, &received);
     jp_gnss_hat_shutdown(gnss);
@@ -70,8 +63,9 @@ static void* wait_for_signal(void* gnss)
  * ends the waits in main. */
 static bool signals_handler(jp_gnss_hat_t* gnss, pthread_t* thread)
 {
-    sigset_t signals;
-    termination_signals(&signals);
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
 
     /* Blocks the signals in the calling thread (main); the new thread
      * inherits the mask. Library threads block them on their own. */
