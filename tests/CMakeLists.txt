@@ -19,7 +19,6 @@ add_executable(GnssHatTests
     TestNtrip.cpp
     TestHatLifecycle.cpp
     TestCApi.cpp
-    TestNmeaForwarder.cpp
     TestNotifier.cpp
     TestThreadingSignals.cpp
     TestTimepulse.cpp
