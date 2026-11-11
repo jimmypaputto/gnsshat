@@ -97,29 +97,22 @@ def print_geofencing(geofencing):
 
 
 def main():
-    ubx_hat = gnsshat.GnssHat()
-    ubx_hat.soft_reset_hot_start()
-
-    is_startup_done = ubx_hat.start(create_default_config())
-    if not is_startup_done:
-        print("Startup failed, exit")
-        return -1
-
-    print("Startup done, ublox configured")
-
     try:
-        while True:
-            navigation = ubx_hat.wait_and_get_fresh_navigation()
-            geofencing = navigation.geofencing
-            print_geofencing(geofencing)
-            print()  # Empty line for readability
-            
+        with gnsshat.GnssHat() as ubx_hat:
+            ubx_hat.soft_reset_hot_start()
+
+            if not ubx_hat.start(create_default_config()):
+                print("Startup failed, exit")
+                return -1
+
+            print("Startup done, ublox configured")
+
+            while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
+                print_geofencing(navigation.geofencing)
+                print()  # Empty line for readability
     except KeyboardInterrupt:
         print("\nStopping geofencing monitoring...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
-    
+
     print("Program finished")
     return 0
 

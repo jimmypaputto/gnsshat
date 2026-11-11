@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <sstream>
 
+#include "common/ThreadingSignals.hpp"
 #include "common/Utils.hpp"
 #include "ublox/Rtcm3Parser.hpp"
 
@@ -68,8 +69,8 @@ namespace JimmyPaputto
         if (!connectInternal())
             return false;
 
-        recvThread_ = std::jthread([this](std::stop_token st)
-                                   { receiveLoop(st); });
+        recvThread_ = createSignalFreeThread([this](std::stop_token st)
+                                             { receiveLoop(st); });
         return true;
     }
 
@@ -426,8 +427,8 @@ namespace JimmyPaputto
             ggaCv_.notify_all();
             autoGgaThread_.join();
         }
-        autoGgaThread_ = std::jthread([this](std::stop_token st)
-                                      { autoGgaLoop(st); });
+        autoGgaThread_ = createSignalFreeThread([this](std::stop_token st)
+                                                { autoGgaLoop(st); });
     }
 
     std::vector<NtripSourcetableEntry> NtripClient::fetchSourcetable(

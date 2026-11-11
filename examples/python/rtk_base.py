@@ -134,56 +134,51 @@ def main():
                         help="NTRIP mountpoint name (default: GNSS_HAT)")
     args = parser.parse_args()
 
-    hat = gnsshat.GnssHat()
-    hat.soft_reset_hot_start()
-
-    # Use Survey-In mode by default.
-    # Alternatively try: create_fixed_position_lla_config()
-    #                 or: create_fixed_position_ecef_config()
-    is_startup_done = hat.start(create_survey_in_config())
-    if not is_startup_done:
-        print("Failed to start GNSS")
-        return -1
-
-    print("GNSS started as RTK Base (Survey-In mode).")
-    print("Waiting for corrections...\n")
-
-    caster = gnsshat.NtripCaster("0.0.0.0", args.port, args.mountpoint)
-    caster.start()
-
     try:
-        while True:
-            nav = hat.wait_and_get_fresh_navigation()
-            fix_type = gnsshat.FixType(nav.pvt.fix_type)
+        with (
+            gnsshat.GnssHat() as hat,
+            gnsshat.NtripCaster("0.0.0.0", args.port, args.mountpoint) as caster,
+        ):
+            hat.soft_reset_hot_start()
 
-            if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
-                print(f"Fix type: {fix_type.name}, "
-                      f"waiting for TIME_ONLY_FIX for RTK Base")
-            else:
+            # Use Survey-In mode by default.
+            # Alternatively try: create_fixed_position_lla_config()
+            #                 or: create_fixed_position_ecef_config()
+            if not hat.start(create_survey_in_config()):
+                print("Failed to start GNSS")
+                return -1
+
+            print("GNSS started as RTK Base (Survey-In mode).")
+            print("Waiting for corrections...\n")
+
+            caster.start()
+
+            while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+                fix_type = gnsshat.FixType(nav.pvt.fix_type)
+
+                if fix_type != gnsshat.FixType.TIME_ONLY_FIX:
+                    print(f"Fix type: {fix_type.name}, "
+                          f"waiting for TIME_ONLY_FIX for RTK Base")
+                    continue
+
                 print("\nRTK Base ready with TIME_ONLY_FIX")
-                try:
-                    corrections = hat.rtk_get_full_corrections()
-                    for frame in corrections:
-                        print_rtcm3_frame(frame, str(nav.pvt.utc_time))
+                corrections = hat.rtk_get_full_corrections()
+                if not corrections:
+                    print("RTK corrections not available yet")
+                    continue
 
-                    caster.feed(corrections)
-                    caster.update_position(
-                        nav.pvt.latitude, nav.pvt.longitude)
+                for frame in corrections:
+                    print_rtcm3_frame(frame, str(nav.pvt.utc_time))
 
-                    clients = caster.client_count()
-                    if clients > 0:
-                        print(f"Broadcasting to {clients} client(s)")
+                caster.feed(corrections)
+                caster.update_position(
+                    nav.pvt.latitude, nav.pvt.longitude)
 
-                except RuntimeError as e:
-                    print(f"RTK corrections not available: {e}")
-
+                clients = caster.client_count()
+                if clients > 0:
+                    print(f"Broadcasting to {clients} client(s)")
     except KeyboardInterrupt:
         print("\nStopping RTK Base monitoring...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
-    finally:
-        caster.stop()
 
     print("Program finished")
     return 0

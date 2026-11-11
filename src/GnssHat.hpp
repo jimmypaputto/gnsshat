@@ -6,10 +6,13 @@
 #define GNSS_HAT_HPP_
 
 #include "Version.hpp"
+#include "EHatEvents.hpp"
 
+#include <chrono>
+#include <optional>
+#include <stop_token>
 #include <string>
 #include <string_view>
-#include <optional>
 
 #include "ublox/GnssConfig.hpp"
 #include "ublox/Navigation.hpp"
@@ -24,6 +27,9 @@
 namespace JimmyPaputto
 {
 
+// The library never installs signal handlers and never uses signals
+// internally. Its internal threads block all asynchronous signals, so signals
+// are delivered only to application threads.
 class IGnssHat
 {
 public:
@@ -32,7 +38,11 @@ public:
     virtual std::string_view name() const = 0;
 
     virtual Navigation navigation() const = 0;
-    virtual Navigation waitAndGetFreshNavigation() = 0;
+    // Blocks until the next navigation epoch. Returns std::nullopt once the
+    // wait is stopped: by `stop`, by shutdown(), or by the destruction of this
+    // instance.
+    virtual std::optional<Navigation> waitAndGetFreshNavigation(
+        std::stop_token stop = {}) = 0;
 
     virtual void hardResetUbloxSom_ColdStart() const = 0;
     virtual void softResetUbloxSom_HotStart() = 0;
@@ -41,15 +51,29 @@ public:
 
     virtual bool startForwardForGpsd() = 0;
     virtual void stopForwardForGpsd() = 0;
+    // Blocks until gpsd forwarding is stopped: by stopForwardForGpsd(), by
+    // shutdown(), or by the destruction of this instance.
+    // Useful to park the main thread of a gpsd-only daemon; cleanup does not
+    // need it, because destruction stops the forwarder.
+    // At most one call may be in progress per instance. Stopping forwarding
+    // and reading its device path from another thread are allowed. Repeated
+    // joins without restarting forwarding return immediately.
     virtual void joinForwardForGpsd() = 0;
     virtual std::string getGpsdDevicePath() const = 0;
 
+    // Returns false if GPIO 5 is taken, e.g. by the kernel PPS driver.
     virtual bool enableTimepulse() = 0;
     virtual void disableTimepulse() = 0;
-    virtual void timepulse() = 0;
+    // Blocks until the next timepulse. Returns false when the timepulse is
+    // not enabled or the wait is stopped, as in waitAndGetFreshNavigation().
+    virtual bool timepulse(std::stop_token stop = {}) = 0;
 
     virtual std::optional<TimeMark> timeMark() const = 0;
-    virtual TimeMark waitAndGetFreshTimeMark() = 0;
+    // Blocks until the next time mark event. Returns std::nullopt when the
+    // HAT has no time mark input or the wait is stopped, as in
+    // waitAndGetFreshNavigation().
+    virtual std::optional<TimeMark> waitAndGetFreshTimeMark(
+        std::stop_token stop = {}) = 0;
 
     virtual SystemHealth systemHealth() const = 0;
     virtual std::string swVersion() const = 0;
@@ -61,8 +85,30 @@ public:
     virtual void triggerTimeMark(
         ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
 
+    // Blocks until the next `event` like the waits above, but for at most
+    // `timeout`, for code that has work to do between waits, e.g. a language
+    // binding running signal handlers. Ready: read the data with navigation()
+    // or timeMark(). Stopped: the event will never come, in the same cases in
+    // which the waits above return std::nullopt / false.
+    virtual EWaitResult waitForEvent(EHatEvent event,
+        std::chrono::milliseconds timeout) = 0;
+
+    // Stops every wait of this instance and gpsd forwarding for good: the
+    // waits return std::nullopt / false now and later, joinForwardForGpsd()
+    // returns, and start() and startForwardForGpsd() fail. Idempotent.
+    // Thread-safe, but NOT async-signal-safe: never call it from a signal
+    // handler; call it from a normal thread, e.g. one waiting in sigwait().
+    // Releases nothing: join the threads that use the instance, then delete
+    // it. Create a new instance to start again.
+    virtual void shutdown() = 0;
+
+    // Never returns nullptr: an unknown or missing HAT terminates the process.
+    // Use Hat::detectProduct() first to fail gracefully.
     static IGnssHat* create();
 
+    // Deleting stops the waits, wakes joinForwardForGpsd() and waits until
+    // blocked calls have returned. No thread may start a new call once
+    // deletion has begun.
     virtual ~IGnssHat() = default;
 };
 

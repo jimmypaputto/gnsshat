@@ -5,6 +5,7 @@
 #include "Run.hpp"
 
 #include "UartDriver.hpp"
+#include "common/ThreadingSignals.hpp"
 
 #include <algorithm>
 
@@ -138,7 +139,7 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     if (rtkConfig.mode == ERtkMode::Base && rtkConfig.base.has_value())
     {
         unfinishedFrameBuff_.reserve(unfinishedFrameBuffMaxSize);
-        uart_ = std::jthread([this] (std::stop_token stoken) {
+        uart_ = createSignalFreeThread([this] (std::stop_token stoken) {
             while (!stoken.stop_requested())
             {
                 executeUartBase();
@@ -147,7 +148,7 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     }
     else if (rtkConfig.mode == ERtkMode::Rover)
     {
-        uart_ = std::jthread([this](std::stop_token stoken) {
+        uart_ = createSignalFreeThread([this](std::stop_token stoken) {
             while (!stoken.stop_requested())
             {
                 executeUartRover(stoken);

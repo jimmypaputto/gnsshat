@@ -2,7 +2,10 @@
  * Jimmy Paputto 2025
  */
 
+#include <csignal>
 #include <cstdio>
+#include <memory>
+#include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
@@ -58,10 +61,28 @@ void analyzeRfBlock(const RfBlock& rfBlock)
     }
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
     const auto gnssConfig = createDefaultConfig();
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
     ubxHat->softResetUbloxSom_HotStart();
     const auto isStartupDone = ubxHat->start(gnssConfig);
     if (!isStartupDone)
@@ -70,9 +91,11 @@ auto main() -> int
         return -1;
     }
 
-    while (true)
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
     {
-        const auto rfBlocks = ubxHat->waitAndGetFreshNavigation().rfBlocks;
+        const auto& rfBlocks = navigation->rfBlocks;
         if (rfBlocks.empty())
             continue;
         printf("============================================\r\n");
@@ -83,5 +106,6 @@ auto main() -> int
         }
     }
 
+    signalsInterrupt.join();
     return 0;
 }

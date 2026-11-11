@@ -12,10 +12,10 @@
  *   ./RtkServer <caster_host> <port> <mountpoint> [username] [password]
  */
 
-#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <memory>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
@@ -23,9 +23,23 @@
 
 using namespace JimmyPaputto;
 
-static std::atomic<bool> g_running{true};
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
 
-static void signalHandler(int) { g_running = false; }
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
 
 int main(int argc, char* argv[])
 {
@@ -42,9 +56,6 @@ int main(int argc, char* argv[])
     const char* mount    = argv[3];
     const char* username = (argc > 4) ? argv[4] : "";
     const char* password = (argc > 5) ? argv[5] : "";
-
-    std::signal(SIGINT,  signalHandler);
-    std::signal(SIGTERM, signalHandler);
 
     // ── Configure GNSS as Base ──────────────────────────────────────
     GnssConfig config {
@@ -68,13 +79,7 @@ int main(int argc, char* argv[])
         }
     };
 
-    auto* hat = IGnssHat::create();
-    if (!hat)
-    {
-        std::fprintf(stderr, "Failed to create GNSS HAT instance\n");
-        return 1;
-    }
-
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
     hat->hardResetUbloxSom_ColdStart();
     if (!hat->start(config))
     {
@@ -99,11 +104,12 @@ int main(int argc, char* argv[])
     std::printf("Connected to %s:%u/%s — pushing corrections\n",
                 host, port, mount);
 
+    auto signalsInterrupt = signalsHandler(*hat);
+
     // ── Main loop ───────────────────────────────────────────────────
-    while (g_running)
+    while (const auto nav = hat->waitAndGetFreshNavigation())
     {
-        const auto nav = hat->waitAndGetFreshNavigation();
-        if (nav.pvt.fixType != EFixType::TimeOnlyFix)
+        if (nav->pvt.fixType != EFixType::TimeOnlyFix)
         {
             std::printf("Waiting for TimeOnlyFix...\n");
             std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -117,6 +123,8 @@ int main(int argc, char* argv[])
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
+    signalsInterrupt.join();
+
     auto stats = server.getStats();
     std::printf("\nSession: %llu bytes TX, %llu frames, %.1fs uptime\n",
                 static_cast<unsigned long long>(stats.bytesTx),
@@ -124,7 +132,6 @@ int main(int argc, char* argv[])
                 stats.uptimeMs / 1000.0);
 
     server.disconnect();
-    delete hat;
     std::printf("Disconnected.\n");
     return 0;
 }

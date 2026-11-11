@@ -14,6 +14,7 @@
 #   - Fixed Position (ECEF): Provide known ECEF coordinates
 #
 
+
 from jimmypaputto import gnsshat
 
 
@@ -112,37 +113,31 @@ def create_fixed_position_ecef_config() -> dict:
 
 
 def main():
-    hat = gnsshat.GnssHat()
-    hat.soft_reset_hot_start()
-
-    # Use Survey-In mode by default.
-    # Alternatively try: create_fixed_position_lla_config()
-    #                 or: create_fixed_position_ecef_config()
-    is_startup_done = hat.start(create_survey_in_config())
-    if not is_startup_done:
-        print("Failed to start GNSS")
-        return -1
-
-    print("GNSS started with time base configuration.")
-    print("Waiting for TimeOnlyFix...\n")
-
     try:
-        while True:
-            nav = hat.wait_and_get_fresh_navigation()
-            fix_type = gnsshat.FixType(nav.pvt.fix_type)
-            time_iso = gnsshat.utc_time_iso8601(nav)
+        with gnsshat.GnssHat() as hat:
+            hat.soft_reset_hot_start()
 
-            print(f"[{time_iso}] Fix: {fix_type.name}  "
-                  f"tAcc: {nav.pvt.utc_time.accuracy} ns  "
-                  f"Lat: {nav.pvt.latitude:.7f}  "
-                  f"Lon: {nav.pvt.longitude:.7f}  "
-                  f"Alt: {nav.pvt.altitude_msl:.2f} m")
+            # Use Survey-In mode by default.
+            # Alternatively try: create_fixed_position_lla_config()
+            #                 or: create_fixed_position_ecef_config()
+            if not hat.start(create_survey_in_config()):
+                print("Failed to start GNSS")
+                return -1
 
+            print("GNSS started with time base configuration.")
+            print("Waiting for TimeOnlyFix...\n")
+
+            while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+                fix_type = gnsshat.FixType(nav.pvt.fix_type)
+                time_iso = gnsshat.utc_time_iso8601(nav)
+
+                print(f"[{time_iso}] Fix: {fix_type.name}  "
+                      f"tAcc: {nav.pvt.utc_time.accuracy} ns  "
+                      f"Lat: {nav.pvt.latitude:.7f}  "
+                      f"Lon: {nav.pvt.longitude:.7f}  "
+                      f"Alt: {nav.pvt.altitude_msl:.2f} m")
     except KeyboardInterrupt:
         print("\nStopping time base monitoring...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
 
     print("Program finished")
     return 0

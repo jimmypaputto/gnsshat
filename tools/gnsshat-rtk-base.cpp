@@ -670,7 +670,9 @@ int main(int argc, char* argv[])
     while (g_running)
     {
         const auto nav = hat->waitAndGetFreshNavigation();
-        const auto& pvt = nav.pvt;
+        if (!nav)
+            break;
+        const auto& pvt = nav->pvt;
         ++winEpochs;
 
         // Periodic watchdog ping (independent of summary emission).

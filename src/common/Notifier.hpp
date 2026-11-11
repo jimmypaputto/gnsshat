@@ -5,6 +5,7 @@
 #ifndef JIMMY_PAPUTTO_NOTIFIER_HPP_
 #define JIMMY_PAPUTTO_NOTIFIER_HPP_
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <mutex>
@@ -17,6 +18,13 @@ namespace JimmyPaputto
 class Notifier
 {
 public:
+    enum class EWaitFor : uint8_t
+    {
+        Notified,
+        TimedOut,
+        Stopped
+    };
+
     void notify()
     {
         std::lock_guard lock(mtx);
@@ -39,6 +47,40 @@ public:
             return false;
         ready = false;
         return true;
+    }
+
+    // Returns false as soon as either token is stopped, even with a
+    // notification pending; that notification is left for the next wait.
+    bool wait(std::stop_token stoken, std::stop_token other)
+    {
+        // Registered before mtx is taken: for an already stopped token the
+        // callback runs right here and takes mtx itself.
+        std::stop_callback wakeOnOtherStop(other, [this] {
+            std::lock_guard lock(mtx);
+            cv.notify_all();
+        });
+
+        std::unique_lock lock(mtx);
+        const bool woken = cv.wait(lock, stoken,
+            [this, &other]{ return ready || other.stop_requested(); });
+        if (!woken || stoken.stop_requested() || other.stop_requested())
+            return false;
+        ready = false;
+        return true;
+    }
+
+    // As wait(stoken, other) with one token, but gives up after `timeout`.
+    EWaitFor waitFor(std::stop_token stoken, std::chrono::milliseconds timeout)
+    {
+        std::unique_lock lock(mtx);
+        const bool notified =
+            cv.wait_for(lock, stoken, timeout, [this]{ return ready; });
+        if (stoken.stop_requested())
+            return EWaitFor::Stopped;
+        if (!notified)
+            return EWaitFor::TimedOut;
+        ready = false;
+        return EWaitFor::Notified;
     }
 
     // Side subscriber: keeps its own cursor instead of consuming `ready`, so

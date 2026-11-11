@@ -2,6 +2,7 @@
 
 from jimmypaputto import gnsshat
 
+
 def create_config() -> dict:
     return {
         'measurement_rate_hz': 1,
@@ -17,24 +18,16 @@ def create_config() -> dict:
         'geofencing': None
     }
 
-hat = gnsshat.GnssHat()
-hat.soft_reset_hot_start()
-isStartupDone = hat.start(create_config())
-if isStartupDone:
-    print("GNSS HAT started successfully!")
-else:
-    print("Failed to start GNSS HAT, exiting...")
-    exit(1)
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.soft_reset_hot_start()
+        if not hat.start(create_config()):
+            print("Failed to start GNSS HAT, exiting...")
+            exit(1)
+        print("GNSS HAT started successfully!")
 
-while True:
-    try:
-        nav = hat.wait_and_get_fresh_navigation()
-        print("\033[2J\033[H")  # clear terminal
-        print(nav.pvt)
-
-    except KeyboardInterrupt:
-        print("Exiting...")
-        break
-    except Exception as e:
-        print(f"Error: {e}")
-        break
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print("\033[2J\033[H")  # clear terminal
+            print(nav.pvt)
+except KeyboardInterrupt:
+    print("Exiting...")

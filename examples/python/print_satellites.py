@@ -85,26 +85,18 @@ def print_satellites(nav):
     print()
 
 
-hat = gnsshat.GnssHat()
-hat.soft_reset_hot_start()
-is_startup_done = hat.start(create_config())
-if is_startup_done:
-    print("GNSS HAT started successfully!")
-else:
-    print("Failed to start GNSS HAT, exiting...")
-    exit(1)
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.soft_reset_hot_start()
+        if not hat.start(create_config()):
+            print("Failed to start GNSS HAT, exiting...")
+            exit(1)
+        print("GNSS HAT started successfully!")
 
-while True:
-    try:
-        nav = hat.wait_and_get_fresh_navigation()
-        print("\033[2J\033[H", end="")  # clear terminal
-        print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
-        print()
-        print_satellites(nav)
-
-    except KeyboardInterrupt:
-        print("Exiting...")
-        break
-    except Exception as e:
-        print(f"Error: {e}")
-        break
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print("\033[2J\033[H", end="")  # clear terminal
+            print(f"Time: {gnsshat.utc_time_iso8601(nav)}")
+            print()
+            print_satellites(nav)
+except KeyboardInterrupt:
+    print("Exiting...")

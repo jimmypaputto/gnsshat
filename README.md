@@ -106,14 +106,36 @@ For most recent rpi images that would be version 2.
 ### C++
 
 ```cpp
+#include <csignal>
 #include <cstdio>
+#include <memory>
+#include <thread>
 #include <jimmypaputto/GnssHat.hpp>
 
 using namespace JimmyPaputto;
 
+// Ctrl+C / SIGTERM call hat.shutdown(), which ends the wait loop in main.
+std::thread signalsHandler(IGnssHat& hat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in main; the new thread inherits the mask.
+    // Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&hat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        hat.shutdown();
+    });
+}
+
 auto main() -> int
 {
-    auto* hat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
     hat->softResetUbloxSom_HotStart();
 
     GnssConfig config {
@@ -136,13 +158,17 @@ auto main() -> int
         return -1;
     }
 
-    while (true)
+    auto signalsInterrupt = signalsHandler(*hat);
+
+    while (const auto nav = hat->waitAndGetFreshNavigation())
     {
-        const auto nav = hat->waitAndGetFreshNavigation();
         printf("%.6f, %.6f  alt=%.1fm  sats=%d\n",
-            nav.pvt.latitude, nav.pvt.longitude,
-            nav.pvt.altitude, nav.pvt.visibleSatellites);
+            nav->pvt.latitude, nav->pvt.longitude,
+            nav->pvt.altitude, nav->pvt.visibleSatellites);
     }
+
+    signalsInterrupt.join();
+    return 0;  // the destructor stops and releases everything
 }
 ```
 
@@ -150,9 +176,6 @@ auto main() -> int
 
 ```python
 from jimmypaputto import gnsshat
-
-hat = gnsshat.GnssHat()
-hat.soft_reset_hot_start()
 
 config = {
     'measurement_rate_hz': 1,
@@ -165,20 +188,37 @@ config = {
     'geofencing': None
 }
 
-if not hat.start(config):
-    print("Failed to start GNSS")
-    exit(1)
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.soft_reset_hot_start()
+        if not hat.start(config):
+            print("Failed to start GNSS")
+            exit(1)
 
-while True:
-    nav = hat.wait_and_get_fresh_navigation()
-    print(nav)
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print(nav)
+except KeyboardInterrupt:
+    print("Exiting...")
 ```
 
 ### C
 
 ```c
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <jimmypaputto/GnssHat.h>
+
+static sigset_t signals;  /* SIGINT and SIGTERM */
+
+/* Ctrl+C / SIGTERM call jp_gnss_hat_shutdown(), which ends the loop in main. */
+static void* signals_handler(void* hat)
+{
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(hat);
+    return NULL;
+}
 
 int main(void)
 {
@@ -201,6 +241,15 @@ int main(void)
         return -1;
     }
 
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+    /* Blocks the signals in main; the new thread inherits the mask.
+     * Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+    pthread_t signals_interrupt;
+    pthread_create(&signals_interrupt, NULL, signals_handler, hat);
+
     jp_gnss_navigation_t nav;
     while (jp_gnss_hat_wait_and_get_fresh_navigation(hat, &nav))
     {
@@ -209,6 +258,7 @@ int main(void)
             nav.pvt.altitude, nav.pvt.visible_satellites);
     }
 
+    pthread_join(signals_interrupt, NULL);
     jp_gnss_hat_destroy(hat);
     return 0;
 }
@@ -222,23 +272,48 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 | Method | Description |
 |--------|-------------|
-| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation |
+| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation; terminates the process on an unknown HAT (check `Hat::detectProduct()` first) |
 | `start(config)` | Configure the u-blox module and start data acquisition |
 | `name()` | HAT name (e.g. `"L1 GNSS HAT"`) |
-| `waitAndGetFreshNavigation()` | Block until new data arrives, return `Navigation` |
+| `waitAndGetFreshNavigation(stop = {})` | Block until new data arrives; `std::nullopt` once the wait is stopped (see below) |
 | `navigation()` | Return last known `Navigation` immediately |
 | `softResetUbloxSom_HotStart()` | Soft reset (keeps ephemeris/almanac) |
 | `hardResetUbloxSom_ColdStart()` | Full cold reset (clears stored data) |
 | `rtk()` | RTK interface (`IRtk*`, non-null only on RTK HAT) |
 | `enableTimepulse()` / `disableTimepulse()` | Enable/disable timepulse GPIO (pin 5) |
-| `timepulse()` | Block until next timepulse |
+| `timepulse(stop = {})` | Block until next timepulse; `false` when not enabled or stopped |
 | `timeMark()` | Return last `TimeMark` or `std::nullopt` (non-blocking) |
-| `waitAndGetFreshTimeMark()` | Block until new TimeMark event arrives |
+| `waitAndGetFreshTimeMark(stop = {})` | Block until new TimeMark event arrives; `std::nullopt` without a time mark input or once stopped |
 | `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
 | `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
-| `joinForwardForGpsd()` | Block until forwarder thread finishes |
-| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config) |
+| `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, `shutdown()`, destruction) |
+| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
+| `waitForEvent(event, timeout)` | Block until the next `EHatEvent` for at most `timeout`; `EWaitResult` says `Ready`, `Timeout` or `Stopped`. For code with work to do between waits; read the data with `navigation()` / `timeMark()` |
+| `shutdown()` | Stop every wait and gpsd forwarding of this instance for good; thread-safe, not async-signal-safe |
+
+A wait is stopped in three ways, and a loop on it then ends:
+
+- **`shutdown()`** — for the whole program: ends every wait and `joinForwardForGpsd()` of the instance for good, so all loops on it end, and `start()` fails from then on (create a new instance to start again). It releases nothing: join the threads that use the HAT, then delete it. Thread-safe, but not async-signal-safe: call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler.
+- **`std::stop_token`** — for worker threads: pass the token of a `std::jthread`, so that destroying or stopping the thread ends its wait. It ends only that wait, so the instance can be used again (e.g. ROS 2 lifecycle deactivate/activate).
+- **Destruction** — deleting an `IGnssHat` stops all waits and `joinForwardForGpsd()` and waits until the blocked calls have returned. No thread may start a new call once deletion has begun.
+
+```cpp
+std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+hat->start(config);
+std::jthread worker([&hat](std::stop_token stop) {
+    while (const auto nav = hat->waitAndGetFreshNavigation(stop))
+        publish(*nav);
+});
+// declared after `hat`: the worker is stopped and joined first
+```
+
+The library never installs signal handlers and never uses signals internally. Its internal threads block all asynchronous signals, so signals are delivered only to application threads. `shutdown()` is thread-safe; call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler. The C and C++ examples show the pattern: `main` blocks SIGINT and SIGTERM before starting any thread, a dedicated thread takes them with `sigwait()` and calls `shutdown()`, and `main` keeps waiting for data until the waits return `std::nullopt` / `false`. In Python none of this is needed: signal handlers run during the waits, so Ctrl+C simply raises `KeyboardInterrupt` (see [python/README.md](python/README.md#ctrlc-and-signals)).
+
+Only one thread may call `joinForwardForGpsd()` at a time on a given instance
+(the same rule applies to C and Python). Another thread may stop forwarding or
+read its device path while the join is waiting. A join does not request a stop;
+repeated joins without restarting forwarding return immediately.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
@@ -364,9 +439,9 @@ hat->start(config);
 hat->enableTimeMarkTrigger();
 hat->triggerTimeMark();  // toggle EXTINT
 
-auto tm = hat->waitAndGetFreshTimeMark();
-printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
-    tm.towRising_ms, tm.towSubRising_ns, tm.accuracyEstimate_ns);
+if (const auto tm = hat->waitAndGetFreshTimeMark())
+    printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
+        tm->towRising_ms, tm->towSubRising_ns, tm->accuracyEstimate_ns);
 ```
 
 See the TimeMark examples in `examples/cpp/time-mark/`, `examples/c/time-mark/` and `examples/python/time_mark.py`.
@@ -422,7 +497,7 @@ journalctl -u gnsshat-rtk-base -f
 
 ## Architecture
 
-The library is multi-threaded and thread-safe. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
+The library is multi-threaded. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. Thread safety covers the operations documented above, not arbitrary concurrent configuration or lifecycle changes. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
 
 | HAT | Threads | Data Flow |
 |-----|---------|-----------|

@@ -1,8 +1,8 @@
 # Jimmy Paputto 2025
 
-import time
-import sys
 import os
+import sys
+import time
 
 from jimmypaputto import gnsshat
 
@@ -26,21 +26,64 @@ def create_default_config():
 
 
 def wait_for_fix(gnss_hat, timeout_seconds=600):
-    """Wait for GPS fix to be acquired."""
+    """Wait for GPS fix to be acquired. False on timeout or once stopped."""
     start_time = time.time()
 
     while time.time() - start_time < timeout_seconds:
-        try:
-            nav = gnss_hat.wait_and_get_fresh_navigation()
+        nav = gnss_hat.wait_and_get_fresh_navigation()
+        if nav is None:
+            return False
 
-            if gnsshat.FixStatus(nav.pvt.fix_status) == gnsshat.FixStatus.ACTIVE:
-                return True
-
-        except Exception as e:
-            print(f"Error getting navigation: {e}")
-            time.sleep(0.1)
+        if gnsshat.FixStatus(nav.pvt.fix_status) == gnsshat.FixStatus.ACTIVE:
+            return True
 
     return False
+
+
+def measure_startups(hat):
+    print("\n--- COLD START TEST ---")
+    print("Performing hard reset (cold start)...")
+    hat.hard_reset_cold_start()
+
+    print("Waiting for GPS fix after cold start...")
+    cold_start_time = time.time()
+
+    if wait_for_fix(hat):
+        cold_time_ms = int((time.time() - cold_start_time) * 1000)
+        print(f"Cold start took {cold_time_ms} ms")
+    else:
+        print("Cold start stopped or timed out - no fix acquired")
+        return 1
+
+    print(
+        "\nWaiting 40 seconds to collect satellite data for hot start..."
+    )
+    time.sleep(40)
+
+    print("\n--- HOT START TEST ---")
+    print("Performing soft reset (hot start)...")
+    hat.soft_reset_hot_start()
+
+    print("Waiting for GPS fix after hot start...")
+    hot_start_time = time.time()
+
+    if wait_for_fix(hat):
+        hot_time_ms = int((time.time() - hot_start_time) * 1000)
+        print(f"Hot start took {hot_time_ms} ms")
+    else:
+        print("Hot start stopped or timed out - no fix acquired")
+        return 1
+
+    print(f"\n--- RESULTS ---")
+    print(f"Cold start: {cold_time_ms} ms")
+    print(f"Hot start:  {hot_time_ms} ms")
+
+    if cold_time_ms > hot_time_ms:
+        improvement = ((cold_time_ms - hot_time_ms) / cold_time_ms) * 100
+        print(f"Hot start was {improvement:.1f}% faster!")
+    else:
+        print("Hot start was not faster")
+    return 0
 
 
 def main():
@@ -56,52 +99,12 @@ def main():
             return 1
 
         print("GNSS HAT started successfully!")
-        
-        print("\n--- COLD START TEST ---")
-        print("Performing hard reset (cold start)...")
-        hat.hard_reset_cold_start()
-        
-        print("Waiting for GPS fix after cold start...")
-        cold_start_time = time.time()
-        
-        if wait_for_fix(hat):
-            cold_time_ms = int((time.time() - cold_start_time) * 1000)
-            print(f"Cold start took {cold_time_ms} ms")
-        else:
-            print("Cold start timed out - no fix acquired")
-            return 1
-        
-        print(
-            "\nWaiting 40 seconds to collect satellite data for hot start..."
-        )
-        time.sleep(40)
-        
-        print("\n--- HOT START TEST ---")
-        print("Performing soft reset (hot start)...")
-        hat.soft_reset_hot_start()
-        
-        print("Waiting for GPS fix after hot start...")
-        hot_start_time = time.time()
 
-        if wait_for_fix(hat):
-            hot_time_ms = int((time.time() - hot_start_time) * 1000)
-            print(f"Hot start took {hot_time_ms} ms")
-        else:
-            print("Hot start timed out - no fix acquired")
-            return 1
+        result = measure_startups(hat)
 
-        print(f"\n--- RESULTS ---")
-        print(f"Cold start: {cold_time_ms} ms")
-        print(f"Hot start:  {hot_time_ms} ms")
-
-        if cold_time_ms > hot_time_ms:
-            improvement = ((cold_time_ms - hot_time_ms) / cold_time_ms) * 100
-            print(f"Hot start was {improvement:.1f}% faster!")
-        else:
-            print("Hot start was not faster")
-
-    print("\nExample completed successfully")
-    return 0
+    if result == 0:
+        print("\nExample completed successfully")
+    return result
 
 
 if __name__ == "__main__":

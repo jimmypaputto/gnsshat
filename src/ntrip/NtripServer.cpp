@@ -16,6 +16,7 @@
 
 #include <sstream>
 
+#include "common/ThreadingSignals.hpp"
 #include "common/Utils.hpp"
 
 namespace JimmyPaputto
@@ -77,8 +78,8 @@ namespace JimmyPaputto
                 reconnectInitialMs_, reconnectMaxMs_);
         }
 
-        monitorThread_ = std::jthread([this](std::stop_token st)
-                                      { monitorLoop(st); });
+        monitorThread_ = createSignalFreeThread([this](std::stop_token st)
+                                                { monitorLoop(st); });
         return true;
     }
 

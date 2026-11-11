@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <thread>
 
+#include "common/ThreadingSignals.hpp"
 #include "common/GpioInterruptLine.hpp"
 #include "common/Notifier.hpp"
 
@@ -38,7 +39,7 @@ public:
 
     void run()
     {
-        interruptHandler_ = std::jthread([this](std::stop_token stoken) {
+        interruptHandler_ = createSignalFreeThread([this](std::stop_token stoken) {
             interruptHandler(stoken);
         });
     }

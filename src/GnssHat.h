@@ -548,11 +548,37 @@ typedef struct
 
 typedef struct jp_gnss_hat jp_gnss_hat_t;
 
+typedef enum
+{
+    JP_GNSS_HAT_EVENT_NAVIGATION = 0,
+    JP_GNSS_HAT_EVENT_TIME_MARK  = 1,
+    JP_GNSS_HAT_EVENT_TIMEPULSE  = 2
+} jp_gnss_hat_event_t;
+
+typedef enum
+{
+    JP_GNSS_WAIT_READY   = 0,
+    JP_GNSS_WAIT_TIMEOUT = 1,
+    JP_GNSS_WAIT_STOPPED = 2
+} jp_gnss_wait_result_t;
+
+/* Never returns NULL: an unknown or missing HAT terminates the process. */
 jp_gnss_hat_t* jp_gnss_hat_create(void);
+/* Stops the waits (jp_gnss_hat_wait_and_get_fresh_*, jp_gnss_hat_timepulse)
+ * for good, so they return false now and later, and stops gpsd forwarding,
+ * which wakes jp_gnss_hat_join_forward_for_gpsd. Use it to end worker loops
+ * and join them before jp_gnss_hat_destroy(). Idempotent. Thread-safe, but
+ * NOT async-signal-safe: never call it from a signal handler; call it from a
+ * normal thread, e.g. one waiting in sigwait(). The handle cannot be started
+ * again; create a new one. */
+void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat);
+/* Stops the waits and waits for blocked calls to return before freeing the
+ * handle. No thread may start a new call once destruction has begun. */
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat);
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start(jp_gnss_hat_t* hat,
     const jp_gnss_gnss_config_t* config);
+/* Blocks until the next epoch; false once the waits are stopped. */
 bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     jp_gnss_navigation_t* navigation);
 bool jp_gnss_hat_get_navigation(jp_gnss_hat_t* hat,
@@ -565,14 +591,33 @@ bool jp_gnss_hat_enable_timepulse(jp_gnss_hat_t* hat);
 void jp_gnss_hat_disable_timepulse(jp_gnss_hat_t* hat);
 bool jp_gnss_hat_start_forward_for_gpsd(jp_gnss_hat_t* hat);
 void jp_gnss_hat_stop_forward_for_gpsd(jp_gnss_hat_t* hat);
+/* Blocks until gpsd forwarding is stopped: by
+ * jp_gnss_hat_stop_forward_for_gpsd(), jp_gnss_hat_shutdown(), or
+ * jp_gnss_hat_destroy().
+ * At most one join call may be in progress per handle. Another thread may
+ * stop forwarding or read its device path. Repeated joins without restarting
+ * forwarding return immediately. */
 void jp_gnss_hat_join_forward_for_gpsd(jp_gnss_hat_t* hat);
+/* Empty string while gpsd forwarding is not running. */
 const char* jp_gnss_hat_get_gpsd_device_path(jp_gnss_hat_t* hat);
 void jp_gnss_hat_hard_reset_cold_start(jp_gnss_hat_t* hat);
 void jp_gnss_hat_soft_reset_hot_start(jp_gnss_hat_t* hat);
-void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
+/* Blocks until the next timepulse; false when the timepulse is not enabled
+ * or the waits are stopped. */
+bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat);
+/* Blocks until the next `event` like the waits above, but for at most
+ * `timeout_ms`, for code that has work to do between waits, e.g. a language
+ * binding running signal handlers. READY: read the data with
+ * jp_gnss_hat_get_navigation() or jp_gnss_hat_get_time_mark(). STOPPED: the
+ * event will never come, in the same cases in which the waits above return
+ * false. */
+jp_gnss_wait_result_t jp_gnss_hat_wait_for_event(jp_gnss_hat_t* hat,
+    jp_gnss_hat_event_t event, uint32_t timeout_ms);
 
 bool jp_gnss_hat_get_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_t* time_mark);
+/* Blocks until the next time mark event; false when the HAT has no time mark
+ * input or the waits are stopped. */
 bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_t* time_mark);
 bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat);
@@ -580,10 +625,16 @@ void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat);
 void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_trigger_edge_t edge);
 
+/* 1 Hz, portable model, everything optional off. Timepulse stays disabled
+ * until timepulse_pin_config.active is set; it then defaults to 1 Hz,
+ * 0.1 pulse width, rising edge. */
 void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config);
 bool jp_gnss_gnss_config_add_geofence(jp_gnss_gnss_config_t* config,
     jp_gnss_geofence_t geofence);
 
+/* NULL when the HAT is not an RTK base (no RTK or rover mode); count is 0
+ * while the base has no corrections yet. Free with
+ * jp_gnss_rtk_corrections_free(). */
 jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     jp_gnss_hat_t* hat);
 jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(

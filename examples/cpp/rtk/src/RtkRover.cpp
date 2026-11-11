@@ -12,8 +12,10 @@
  */
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <stop_token>
 #include <thread>
 
@@ -75,6 +77,24 @@ void correctionsThread(std::stop_token stoken, IGnssHat* hat,
 }
 
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main(int argc, char* argv[]) -> int
 {
     // Defaults
@@ -93,13 +113,7 @@ auto main(int argc, char* argv[]) -> int
         else if (strcmp(argv[i], "--password") == 0) password = argv[i + 1];
     }
 
-    auto* ubxHat = IGnssHat::create();
-    if (!ubxHat)
-    {
-        printf("Failed to create GNSS HAT instance\r\n");
-        return -1;
-    }
-
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
     ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createConfig());
     if (!isStartupDone)
@@ -114,16 +128,19 @@ auto main(int argc, char* argv[]) -> int
     {
         printf("Failed to connect to NTRIP caster %s:%u/%s\r\n",
                host.c_str(), port, mountpoint.c_str());
-        delete ubxHat;
         return -1;
     }
 
-    std::jthread corrThread(correctionsThread, ubxHat, &client);
+    // Before corrThread: it must inherit the blocked signals.
+    auto signalsInterrupt = signalsHandler(*ubxHat);
 
-    while (true)
+    // Declared last, so it is stopped and joined before the client and the
+    // HAT it uses are destroyed.
+    std::jthread corrThread(correctionsThread, ubxHat.get(), &client);
+
+    while (const auto nav = ubxHat->waitAndGetFreshNavigation())
     {
-        const auto nav = ubxHat->waitAndGetFreshNavigation();
-        const auto& pvt = nav.pvt;
+        const auto& pvt = nav->pvt;
         printf("[%s] %s (%s)  %.6f, %.6f  alt=%.1fm  sats=%d\r\n",
             Utils::utcTimeFromGnss_ISO8601(pvt).c_str(),
             Utils::eFixQuality2string(pvt.fixQuality).c_str(),
@@ -133,9 +150,6 @@ auto main(int argc, char* argv[]) -> int
         );
     }
 
-    corrThread.request_stop();
-    client.disconnect();
-    delete ubxHat;
-
+    signalsInterrupt.join();
     return 0;
 }

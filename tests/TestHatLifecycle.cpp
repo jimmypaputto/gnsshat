@@ -1,7 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <memory>
+#include <stop_token>
+#include <string>
+#include <thread>
+
+#include <unistd.h>
 
 #include "GnssHat.hpp"
 
@@ -77,4 +84,188 @@ TEST(HatLifecycle, NewInstanceStartsClean)
     EXPECT_TRUE(hat->monVerExtensions().empty());
     EXPECT_TRUE(hat->navigation().geofencing.cfg.geofences.empty())
         << "geofences leaked from the previous instance";
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, DeleteWakesBlockedThreads)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    IGnssHat* hat = IGnssHat::create();
+    // gpsd forwarding needs root for /dev/jimmypaputto; without it only the
+    // navigation wait is covered.
+    const bool forwarding = hat->startForwardForGpsd();
+
+    // The receiver is not started, so no epoch arrives and both calls block
+    // until the HAT is deleted. The threads must not touch it afterwards.
+    std::atomic<int> woken{0};
+    std::thread navigationWaiter([hat, &woken] {
+        if (!hat->waitAndGetFreshNavigation())
+            ++woken;
+    });
+    std::thread gpsdJoiner;
+    if (forwarding)
+    {
+        gpsdJoiner = std::thread([hat, &woken] {
+            hat->joinForwardForGpsd();
+            ++woken;
+        });
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_EQ(woken.load(), 0);
+
+    delete hat;
+    navigationWaiter.join();
+    if (gpsdJoiner.joinable())
+        gpsdJoiner.join();
+
+    EXPECT_EQ(woken.load(), forwarding ? 2 : 1);
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, StopTokenEndsOnlyItsOwnWait)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+    EXPECT_FALSE(hat->timepulse()) << "timepulse is not enabled";
+
+    // Not started, so no epoch arrives and only the token ends the waits.
+    std::atomic<bool> firstStopped{false};
+    std::jthread first([&](std::stop_token stop) {
+        firstStopped = !hat->waitAndGetFreshNavigation(stop);
+    });
+    std::atomic<bool> secondReturned{false};
+    std::jthread second([&](std::stop_token stop) {
+        EXPECT_FALSE(hat->waitAndGetFreshNavigation(stop));
+        secondReturned = true;
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    first.request_stop();
+    first.join();
+    EXPECT_TRUE(firstStopped);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_FALSE(secondReturned) << "a stopped token must not end other waits";
+    second.request_stop();
+    second.join();
+    EXPECT_TRUE(secondReturned);
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, ShutdownEndsWaitsPermanently)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+
+    // Not started, so no epoch arrives and only shutdown() ends the wait.
+    std::atomic<bool> stopped{false};
+    std::thread waiter([&] {
+        stopped = !hat->waitAndGetFreshNavigation();
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_FALSE(stopped);
+    hat->shutdown();
+    waiter.join();
+
+    EXPECT_TRUE(stopped);
+    hat->shutdown();
+    EXPECT_FALSE(hat->waitAndGetFreshNavigation()) << "the stop is permanent";
+    EXPECT_FALSE(hat->start(GnssConfig{}));
+}
+
+// Requires a real HAT and root for /dev/jimmypaputto, so it only runs with
+// GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, ShutdownEndsGpsdJoin)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+    if (!hat->startForwardForGpsd())
+        GTEST_SKIP() << "gpsd forwarding needs root";
+
+    const std::string devicePath = hat->getGpsdDevicePath();
+    ASSERT_FALSE(devicePath.empty());
+
+    std::atomic<bool> joined{false};
+    std::thread joiner([&] {
+        hat->joinForwardForGpsd();
+        joined = true;
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    EXPECT_FALSE(joined);
+    hat->shutdown();
+    joiner.join();
+
+    EXPECT_TRUE(joined);
+    EXPECT_TRUE(hat->getGpsdDevicePath().empty());
+    EXPECT_NE(::access(devicePath.c_str(), F_OK), 0)
+        << devicePath << " left behind";
+    EXPECT_FALSE(hat->startForwardForGpsd()) << "the stop is permanent";
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, WaitForEventTimesOutThenStops)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    const std::string product = Hat::detectProduct();
+    if (product.empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    using namespace std::chrono_literals;
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+
+    // Not started, so no epoch arrives.
+    EXPECT_EQ(hat->waitForEvent(EHatEvent::Navigation, 20ms),
+        EWaitResult::Timeout);
+    EXPECT_EQ(hat->waitForEvent(EHatEvent::Timepulse, 20ms),
+        EWaitResult::Stopped) << "timepulse is not enabled";
+    if (product != "L1/L5 GNSS TIME HAT")
+    {
+        EXPECT_EQ(hat->waitForEvent(EHatEvent::TimeMark, 20ms),
+            EWaitResult::Stopped) << "no time mark input";
+    }
+
+    hat->shutdown();
+    EXPECT_EQ(hat->waitForEvent(EHatEvent::Navigation, 20ms),
+        EWaitResult::Stopped);
+}
+
+// Requires a real HAT, so it only runs with GNSSHAT_HW_TESTS set.
+TEST(HatLifecycle, EnableTimepulseFailsWhenTheLineIsTaken)
+{
+    if (!hardwareTestsEnabled())
+        GTEST_SKIP() << "set GNSSHAT_HW_TESTS=1 to run on a real HAT";
+
+    if (Hat::detectProduct().empty())
+        GTEST_SKIP() << "no HAT detected";
+
+    std::unique_ptr<IGnssHat> first(IGnssHat::create());
+    std::unique_ptr<IGnssHat> second(IGnssHat::create());
+    ASSERT_TRUE(first->enableTimepulse());
+    EXPECT_FALSE(second->enableTimepulse());
+    EXPECT_FALSE(second->timepulse()) << "the failed enable left it disabled";
 }

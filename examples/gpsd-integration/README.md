@@ -24,22 +24,31 @@ The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. T
 `GpsdInteractive` is an example — adapt the same mechanism in your own code. Your application can forward NMEA to gpsd while doing its own work at the same time. The forwarding runs in a background thread — no collisions with navigation reads.
 
 ```cpp
-auto* ubxHat = IGnssHat::create();
+std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
 ubxHat->start(config);
 
 // Start NMEA forwarding in background
 ubxHat->startForwardForGpsd();
 printf("gpsd device: %s\n", ubxHat->getGpsdDevicePath().c_str());
 
+// Blocks SIGINT/SIGTERM in main and starts a thread that takes them with
+// sigwait() and calls ubxHat->shutdown() (see GpsdInteractive.cpp)
+auto signalsInterrupt = signalsHandler(*ubxHat);
+
 // Your app keeps running — navigation and gpsd work simultaneously
-while (running)
+while (const auto nav = ubxHat->waitAndGetFreshNavigation())
 {
-    auto nav = ubxHat->waitAndGetFreshNavigation();
-    // use nav...
+    // use *nav...
 }
 
-ubxHat->stopForwardForGpsd();
+// Ctrl+C ends the loop
+signalsInterrupt.join();
+// the destructor stops the forwarder
 ```
+
+The library never handles signals itself, so the example owns Ctrl+C and
+`systemctl stop`. `shutdown()` is thread-safe but not async-signal-safe, which is
+why it runs in the `sigwait()` thread and not in a signal handler.
 
 Build and run:
 
@@ -61,7 +70,17 @@ Key API calls:
 - `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
 - `getGpsdDevicePath()` — returns path to virtual device (`/dev/jimmypaputto/gnss`)
 - `stopForwardForGpsd()` — stops forwarding, removes virtual device
-- `joinForwardForGpsd()` — blocks until forwarding is stopped
+- `shutdown()` — stops all waits and forwarding for good; the daemon calls it
+  from its `sigwait()` thread on Ctrl+C / SIGTERM
+- `joinForwardForGpsd()` — blocks until forwarding is stopped: by
+  `stopForwardForGpsd()`, by `shutdown()`, or by destroying the HAT. Cleanup
+  does not need it — the destructor stops the forwarder and removes the
+  virtual device
+
+Use only one joiner at a time per HAT. Another thread may stop forwarding or
+read the device path while the join is waiting. The join itself does not stop
+forwarding; calling it again after it has returned is harmless unless
+forwarding has been restarted.
 
 ## Daemon (jpgnss2gpsd-bridge)
 

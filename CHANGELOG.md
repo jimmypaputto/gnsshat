@@ -7,10 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- The C++ waits take an optional `std::stop_token`, which ends only that wait
+  and leaves the HAT usable, for worker threads and ROS 2 lifecycle nodes
+- `shutdown()` (C `jp_gnss_hat_shutdown()`, Python `shutdown()`) stops every
+  wait and gpsd forwarding of a HAT for good, so worker loops end and can be
+  joined before the HAT is deleted. It is thread-safe but not
+  async-signal-safe: call it from a thread waiting in `sigwait()`
+- `waitForEvent()` (C `jp_gnss_hat_wait_for_event()`) waits for the next epoch,
+  time mark or timepulse for at most a given time, for code with work to do
+  between waits. The result tells a timeout apart from a wait that is over
+- Python `GnssHat.close()` and `GnssHat.closed`, so the HAT can be released
+  without a `with` block. Leaving a `with` block calls `close()`
+
 ### Changed
+- **Breaking:** `waitAndGetFreshNavigation()` and `waitAndGetFreshTimeMark()`
+  return `std::optional` and `timepulse()` returns `bool`, because a stopped
+  wait handed back empty data that looked real. They return `std::nullopt` /
+  `false` once stopped, and on HATs without the time mark input or with the
+  timepulse disabled; the C waits and Python follow with `false` / `None`
 - `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
   `rtk.base` is set, because the base config was silently ignored. Leave
   `rtk.base` unset for a rover
+- `rtk_get_full_corrections()` / `rtk_get_tiny_corrections()` in Python
+  raised `RuntimeError` while the base had no data yet, and the C functions
+  returned `NULL` for that case too. They now return `[]` / `count == 0`, and
+  fail only when the HAT is not an RTK base
+- Python `start()` raised `RuntimeError` instead of returning `False` when the
+  library rejected the config or startup failed, unlike the C/C++ API. It now
+  returns `False`; malformed config dicts still raise `TypeError` / `ValueError`
+- `jp_gnss_gnss_config_init()` enabled the timepulse while Python left it off
+  and `TimepulsePinConfig::active` in C++ had no default. All three now keep
+  the timepulse disabled unless it is explicitly activated
+- Python methods on a closed `GnssHat` now raise `RuntimeError("GnssHat is
+  closed")` instead of "GNSS HAT not initialized", and calling `__init__()` on
+  an initialized object raises instead of opening the HAT a second time
 
 ### Fixed
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
@@ -21,6 +52,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   not find `<jimmypaputto/...>` headers, or silently took them from a
   system-wide install, unless `BUILD_EXAMPLES` was on. The build tree now
   always provides the installed `include/jimmypaputto` layout
+- Python `get_gpsd_device_path()` returned `''` instead of the documented
+  `None` when gpsd forwarding was not running, because the C wrapper passes an
+  empty string. The empty path is now mapped to `None`
+- Deleting a HAT (`delete`, `jp_gnss_hat_destroy()`) while another thread was
+  blocked in `waitAndGetFresh*()`, `timepulse()` or `joinForwardForGpsd()`
+  destroyed the object under that thread, and `timepulse()` could not be woken
+  at all. Deletion now wakes these calls and waits for them to return
+- `stopForwardForGpsd()` and status reads could race with
+  `joinForwardForGpsd()`. Forwarder ownership is now mutex-protected and
+  status uses an atomic flag independent of the join; only one concurrent
+  joiner is supported
+- Leaving a Python `with GnssHat()` block while another thread was blocked in
+  `wait_and_get_fresh_*()`, `timepulse()` or `join_forward_for_gpsd()` freed
+  the HAT under that thread. `close()` now ends those waits with `None` /
+  `False` and waits for running calls before releasing the HAT
+- The "Unknown HAT" message printed before `IGnssHat::create()` terminates
+  the process was lost whenever stdout was not a terminal (systemd, Docker,
+  ROS launch), because it was buffered. It now goes to stderr and names the
+  detected product
+- Ctrl+C did not end a Python `wait_and_get_fresh_*()`, `timepulse()` or
+  `join_forward_for_gpsd()` until the next event, and never without data,
+  because Python signal handlers run only between bytecodes. These calls now
+  run them while they wait, so `KeyboardInterrupt` ends them within 100 ms
+- Python calls that can block, such as `start()` and the resets, held the GIL
+  and froze every other Python thread. They now release it
+- Leaving the `with` block of a Python NTRIP class could hang when a thread was
+  logging through a Python callback, because the threads were joined with the
+  GIL held. They are now joined without it
+- `enableTimepulse()` terminated the process when GPIO 5 was taken, e.g. by the
+  kernel PPS driver, although it returns `bool` and Python documents a
+  `RuntimeError`. It now returns `false`, and Python raises
+- With `FallingEdgeAtTopOfSecond`, `timepulse()` returned at the end of the
+  pulse instead of at the top of the second, because the library always
+  listened for the rising edge. It now listens for the edge the configured
+  polarity puts at the top of the second
+- With the timepulse enabled, its interrupt thread kept one CPU core busy,
+  because it polled the GPIO line with a zero timeout that returns at once.
+  It now blocks on the line for up to 100 ms per wait
+- A signal handled by the application, e.g. SIGINT or SIGTERM, could run in a
+  library thread and interrupt its blocking I/O, which then failed like a
+  device error. Threads started by the library now block all asynchronous
+  signals, so signals reach only the application's threads
 
 ## [1.2.0] - 2026-10-16
 

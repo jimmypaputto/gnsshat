@@ -2,6 +2,12 @@
 
 This directory contains Python examples demonstrating how to use the GNSS HAT library.
 
+Every example stops on Ctrl+C: it raises `KeyboardInterrupt`, also while
+`wait_and_get_fresh_*()` or `timepulse()` is blocking, and leaving the `with`
+block then releases the HAT. SIGTERM keeps Python's default and ends the process
+at once; [Ctrl+C and signals](../../python/README.md#ctrlc-and-signals) shows
+how a service makes it behave like Ctrl+C.
+
 ## Prerequisites
 
 Make sure the Python module is installed:
@@ -149,13 +155,4 @@ Edit the command-line arguments to set your NTRIP caster credentials.
 
 ```bash
 python ntrip_server.py --caster-host <HOST> --caster-port 2101 --mountpoint <MOUNT> --password <PWD>
-```
-
-### 13. benchmark_25hz.py
-25 Hz measurement rate benchmark:
-- Measures frames/s received via `wait_and_get_fresh_navigation()` at 25 Hz
-- Outputs one ISO 8601 UTC time per line for post-processing
-
-```bash
-sudo python3 benchmark_25hz.py > /tmp/bench_py.csv
 ```

@@ -4,8 +4,10 @@
 
 #include "GpioInterruptLine.hpp"
 
+#include <cerrno>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 
 #include <gpiod.h>
 
@@ -91,7 +93,7 @@ GpioInterruptLine::GpioInterruptLine(
             pin_
         );
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("GPIO line request failed");
     }
 
     eventBuffer_ = gpiod_edge_event_buffer_new(1);
@@ -148,7 +150,7 @@ GpioInterruptLine::GpioInterruptLine(
             pin_
         );
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("GPIO line request failed");
     }
 #endif
 }
@@ -168,12 +170,14 @@ GpioInterruptLine::~GpioInterruptLine()
         gpiod_chip_close(chip_);
 }
 
+// A signal interrupting the wait (EINTR) is reported as Timeout, not Error:
+// nothing is wrong with the line and the caller simply waits again.
 GpioInterruptLine::EventType GpioInterruptLine::waitEvent(int64_t timeoutNs)
 {
 #if LIBGPIOD_VERSION >= 2
     int ret = gpiod_line_request_wait_edge_events(lineReq_, timeoutNs);
     if (ret < 0)
-        return EventType::Error;
+        return errno == EINTR ? EventType::Timeout : EventType::Error;
     if (ret == 0)
         return EventType::Timeout;
 
@@ -205,7 +209,7 @@ GpioInterruptLine::EventType GpioInterruptLine::waitEvent(int64_t timeoutNs)
 
     int ret = gpiod_line_event_wait(line_, tsPtr);
     if (ret < 0)
-        return EventType::Error;
+        return errno == EINTR ? EventType::Timeout : EventType::Error;
     if (ret == 0)
         return EventType::Timeout;
 
