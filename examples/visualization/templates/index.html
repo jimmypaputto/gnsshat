@@ -346,6 +346,9 @@
                         {% if mode == 'native' and hat_name == 'L1/L5 GNSS RTK HAT' %}
                         <button class="data-tab" data-dtab="ntrip">📡 NTRIP</button>
                         {% endif %}
+                        {% if mode == 'native' and hat_name != 'L1/L5 GNSS TIME HAT' %}
+                        <button class="data-tab" data-dtab="hwtest">🧪 Hardware Test</button>
+                        {% endif %}
                     </div>
                     <button type="button" class="data-tab-nav" id="data-tab-next" aria-label="Next tab">›</button>
                     {% else %}
@@ -1312,6 +1315,55 @@
                 </div>
                 {% endif %}
 
+                {% if mode == 'native' and hat_name != 'L1/L5 GNSS TIME HAT' %}
+                <!-- Hardware Test pane (receiver link, GNSS fix, geofence LED / relay) -->
+                <div id="hwtest-pane" class="data-pane" style="display:none;">
+                    <div class="config-form">
+
+                        <div id="hwtest-result" class="config-status" style="display:none;"></div>
+
+                        <fieldset class="cfg-section">
+                            <legend>🔌 1. Receiver Link</legend>
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="hwtest-link-status" class="ntrip-status-badge connecting">Waiting for data</span>
+                            </div>
+                            <div class="cfg-row">
+                                <label>HAT</label>
+                                <span>{{ hat_name }}</span>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="cfg-section">
+                            <legend>🛰️ 2. GNSS Fix</legend>
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="hwtest-fix-status" class="ntrip-status-badge disconnected">Pending</span>
+                            </div>
+                            <div class="cfg-row"><label>Fix Type</label><span id="hwtest-fix-type">—</span></div>
+                            <div class="cfg-row"><label>Satellites</label><span id="hwtest-fix-sats">—</span></div>
+                            <div class="cfg-row"><label>Position</label><span id="hwtest-fix-pos">—</span></div>
+                        </fieldset>
+
+                        <fieldset class="cfg-section">
+                            <legend>🔲 3. Geofence Relay</legend>
+                            <div class="cfg-row">
+                                <label>Status</label>
+                                <span id="hwtest-relay-status" class="ntrip-status-badge disconnected">Pending</span>
+                            </div>
+                            <div class="cfg-row"><label>Geofence Centre</label><span id="hwtest-relay-centre">—</span></div>
+                            <div class="cfg-row"><label>Radius</label><span id="hwtest-relay-radius">—</span></div>
+                            <div class="cfg-row"><label>Receiver State</label><span id="hwtest-relay-state">—</span></div>
+                            <div class="cfg-hint" id="hwtest-relay-msg">Places a geofence around the current position with the PIO output enabled (Low = Inside), so the GEOFENCE LED lights up and the relay closes. Nothing is saved to flash.</div>
+                            <div class="cfg-actions">
+                                <button type="button" id="hwtest-relay-btn" class="cfg-btn cfg-btn-primary" disabled>▶ Run Relay Test</button>
+                            </div>
+                        </fieldset>
+
+                    </div>
+                </div>
+                {% endif %}
+
             </div>
         </div>
 
@@ -1329,6 +1381,9 @@
     <script src="{{ url_for('static', filename='js/nav-filter-preview.js') }}"></script>
     {% if mode == 'native' %}
     <script src="{{ url_for('static', filename='js/system.js') }}"></script>
+    {% endif %}
+    {% if mode == 'native' and hat_name != 'L1/L5 GNSS TIME HAT' %}
+    <script src="{{ url_for('static', filename='js/hwtest.js') }}"></script>
     {% endif %}
 </body>
 </html>

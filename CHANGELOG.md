@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   between waits. The result tells a timeout apart from a wait that is over
 - Python `GnssHat.close()` and `GnssHat.closed`, so the HAT can be released
   without a `with` block. Leaving a `with` block calls `close()`
+- Visualization app: **Hardware Test** tab for testing boards in series. It
+  checks the receiver link, waits for a fix and closes the geofence relay with
+  a 300 m geofence around the current position
+- Visualization app: `scripts/install_daemon.sh` runs the app on boot as the
+  `gnsshat-visualization` systemd service. It is copied to `/opt` together
+  with its own virtual environment
 
 ### Changed
 - **Breaking:** `waitAndGetFreshNavigation()` and `waitAndGetFreshTimeMark()`

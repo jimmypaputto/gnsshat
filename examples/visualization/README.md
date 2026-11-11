@@ -95,6 +95,33 @@ After startup, the server listens on port **5000**:
 
 ---
 
+## Running as a Daemon
+
+The app can run in native mode as a systemd service that starts on boot:
+
+```bash
+cd examples/visualization/scripts
+sudo ./install_daemon.sh
+```
+
+The installer copies the app to `/opt/gnsshat-visualization`, creates a virtual environment
+there (`--system-site-packages`, so the GnssHat Python module installed by `sudo make install`
+is reused), installs the dependencies and enables `gnsshat-visualization.service`. Run it again
+to update an existing installation.
+
+```bash
+sudo systemctl status gnsshat-visualization    # Check status
+sudo journalctl -u gnsshat-visualization -f    # View logs
+sudo ./uninstall_daemon.sh                     # Remove the service and /opt/gnsshat-visualization
+```
+
+> **Note:** The service runs as root, uses the `eventlet` runtime and holds the GNSS receiver
+> for as long as it runs — stop it before starting anything else that opens the receiver.
+> It restarts until the receiver answers, so the page becomes reachable only once a HAT with
+> a programmed EEPROM is attached.
+
+---
+
 ## Interface Features
 
 ### Maps (tabs)
@@ -136,6 +163,21 @@ Buttons:
 - **📥 Load Config** — reads the current configuration from the module/node
 - **🚀 Send Config** — sends a new configuration (with a progress bar)
 
+### Hardware Test (native, L1 GNSS HAT and L1/L5 GNSS RTK HAT)
+
+The **Hardware Test** tab is a three-step check for testing boards in series:
+
+1. **Receiver Link** — turns OK as soon as navigation data arrives from the module
+2. **GNSS Fix** — waits until the receiver reports a valid fix
+3. **Geofence Relay** — **▶ Run Relay Test** takes the position at the moment of the click and
+   sends a configuration with a 300 m geofence around it and the PIO output enabled
+   (Low = Inside). Once the receiver reports *Inside*, the GEOFENCE LED must be lit and the
+   relay closed — check both on the board
+
+The test geofence lives in the module's RAM only and is gone after a power cycle. The tab
+resets itself whenever the connection to the server is lost, and the page reopens on the tab
+that was active before a refresh, so the next board needs no clicking around.
+
 ### Other
 
 - **Reset Origin** — resets the reference point to the current position (button in the status bar)
@@ -151,12 +193,17 @@ Visualization/
 ├── requirements.txt       # Python dependencies
 ├── res/
 │   └── NazwaStos.svg      # Logo
+├── scripts/
+│   ├── gnsshat-visualization.service  # systemd unit
+│   ├── install_daemon.sh  # Installs the app as a systemd service
+│   └── uninstall_daemon.sh
 ├── static/
 │   ├── css/
 │   │   └── style.css      # UI styles
 │   └── js/
 │       ├── map.js         # Relative map, sky view, RF analyzer, app wiring
-│       └── altitude.js    # Altitude tape (vertical one-axis altimeter)
+│       ├── altitude.js    # Altitude tape (vertical one-axis altimeter)
+│       └── hwtest.js      # Hardware Test tab
 └── templates/
     └── index.html          # HTML template (Jinja2, conditional rendering by mode)
 ```

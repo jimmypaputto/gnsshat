@@ -2343,10 +2343,20 @@ function setupDataTabs() {
                 pane.classList.add('active');
                 pane.style.display = 'block';
             }
+
+            try { localStorage.setItem('dataTab', tabName); } catch (_) {}
         });
     });
 
-    syncNavState();
+    // Reopen the tab that was active before the page was refreshed.
+    let savedTab = null;
+    try { savedTab = localStorage.getItem('dataTab'); } catch (_) {}
+    const restored = Array.from(tabs).find(t => t.dataset.dtab === savedTab);
+    if (restored && !restored.classList.contains('active')) {
+        restored.click();
+    } else {
+        syncNavState();
+    }
 }
 
 
@@ -3222,6 +3232,11 @@ async function sendConfig() {
         return;
     }
 
+    await submitConfig(config);
+}
+
+// Resolves to null on success or to an error message.
+async function submitConfig(config) {
     _lastSentConfig = config;
 
     document.getElementById('cfg-send-btn').disabled = true;
@@ -3246,12 +3261,14 @@ async function sendConfig() {
             if (!err.error) {
                 handleConfigProgress({ step: 'error', message: 'Server error: ' + resp.statusText });
             }
-        } else {
-            // Fallback: apply geofences from HTTP success in case socket 'done' was missed
-            applyGeofencesToMaps(config);
+            return err.error || ('Server error: ' + resp.statusText);
         }
+        // Fallback: apply geofences from HTTP success in case socket 'done' was missed
+        applyGeofencesToMaps(config);
+        return null;
     } catch (e) {
         handleConfigProgress({ step: 'error', message: 'Network error: ' + e.message });
+        return 'Network error: ' + e.message;
     }
 }
 

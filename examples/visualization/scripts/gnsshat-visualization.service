@@ -1,0 +1,26 @@
+[Unit]
+Description=Jimmy Paputto GNSS HAT Visualization
+Documentation=https://github.com/jimmypaputto/GnssHat
+After=network.target
+Wants=network.target
+# Keep retrying: the receiver may not answer yet when the service first starts.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/gnsshat-visualization
+# The default threading mode runs on the Werkzeug development server, which
+# Flask-SocketIO refuses to start without a terminal.
+Environment=GNSSHAT_ASYNC_MODE=eventlet
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/gnsshat-visualization/venv/bin/python app.py native
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gnsshat-visualization
+
+[Install]
+WantedBy=multi-user.target
