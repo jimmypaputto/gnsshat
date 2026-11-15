@@ -9,7 +9,7 @@
  *   make RtkServer
  *
  * Usage:
- *   ./RtkServer <caster_host> <port> <mountpoint> [username] [password]
+ *   ./rtk-server <caster_host> <port> <mountpoint> [username] [password]
  */
 
 #include <chrono>
