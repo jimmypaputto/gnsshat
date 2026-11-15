@@ -37,20 +37,21 @@ cmake ..
 make
 ```
 
-This creates two executables:
-- `PrintNavigationBasic`
-- `PrintNavigationAdvanced`
+This creates two executables (CMake targets `PrintNavigationBasic` and
+`PrintNavigationAdvanced`):
+- `print-navigation-basic`
+- `print-navigation-advanced`
 
 ## Usage
 
 ### Basic Navigation Display
 ```bash
-./PrintNavigationBasic
+./print-navigation-basic
 ```
 
 ### Advanced Navigation Display
 ```bash
-./PrintNavigationAdvanced
+./print-navigation-advanced
 ```
 
 Press `Ctrl+C` to exit either program.

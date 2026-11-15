@@ -82,6 +82,36 @@ sudo make install
 
 All flags are optional.
 
+### Using gnsshat from CMake
+
+**Installed library.** `sudo make install` installs a CMake package and a pkg-config file, both named `gnsshat`:
+
+```cmake
+find_package(gnsshat CONFIG REQUIRED)
+target_link_libraries(app PRIVATE gnsshat::gnsshat)
+```
+
+```sh
+g++ -std=c++20 app.cpp $(pkg-config --cflags --libs gnsshat)
+```
+
+Include the headers as `<jimmypaputto/GnssHat.hpp>` (C++20) or `<jimmypaputto/GnssHat.h>` (C). The package version uses `SameMajorVersion` compatibility: `find_package(gnsshat X.Y CONFIG REQUIRED)` accepts any later release with the same major version.
+
+**Subproject.** With `add_subdirectory()` or `FetchContent`, link the plain `gnsshat` target. gnsshat then disables its install rules, pkg-config file and `uninstall` target. Pin a release tag rather than a branch:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(gnsshat
+    GIT_REPOSITORY https://github.com/jimmypaputto/gnsshat.git
+    GIT_TAG        vX.Y.Z  # a release tag
+)
+FetchContent_MakeAvailable(gnsshat)
+
+target_link_libraries(app PRIVATE gnsshat)
+```
+
+The build tree provides the installed `jimmypaputto/` include layout, so `#include <jimmypaputto/...>` works without installing gnsshat. Releases up to `v1.2.0` do not have this yet: there the headers resolve only with `BUILD_EXAMPLES=ON` or, silently, from a system-wide install.
+
 ### Build/First run troubleshooting
 
 ```sh
@@ -91,15 +121,14 @@ All flags are optional.
 It likely means that UART on the rpi is disabled/busy or configured differently. You might want to enable it for development use via raspi-config if you're using hat that requires it.
 
 ```sh
-/home/pi/GnssHat/src/common/GpioInterruptLine.cpp:160:9: error: ‘gpiod_edge_event_buffer_free’ was not declared in this scope; did you mean ‘gpiod_edge_event_buffer’?
+src/common/GpioInterruptLine.cpp:162:9: error: ‘gpiod_edge_event_buffer_free’ was not declared in this scope; did you mean ‘gpiod_edge_event_buffer’?
 ```
-That is due to the wrong version of libgpiod specified in the CMakeLists.txt. Set the version to 1 or 2, depending on your setup:
+The library was compiled for a different libgpiod API (v1 or v2) than the installed `libgpiod-dev`. CMake detects the version on its own (it looks for the v2-only `gpiod_line_settings_new()` and prints `Using libgpiod v1 API` or `Using libgpiod v2 API`), but stores the result in `CMakeCache.txt`. After installing or switching `libgpiod-dev`, delete the build directory and configure again:
 ```sh
-set(LIBGPIOD_VERSION 1)
-or
-set(LIBGPIOD_VERSION 2)
+rm -rf build && mkdir build && cd build
+cmake .. # plus your -D flags
 ```
-For most recent rpi images that would be version 2.
+Passing `-DLIBGPIOD_VERSION=1` or `=2` has no effect.
 
 ## Quick Start
 
@@ -456,7 +485,7 @@ The u-blox module outputs a configurable pulse signal on GPIO 5. Use `enableTime
 
 ### GPSD Integration
 
-The library can forward NMEA sentences (GGA, RMC, GSA, GSV, ZDA) to a virtual serial port for gpsd. Call `startForwardForGpsd()` to create the virtual TTY, then point gpsd at the path returned by `getGpsdDevicePath()`. The TIME HAT can also be used directly with gpsd via UART (`/dev/ttyAMA0`).
+The library can forward NMEA sentences (GGA, RMC, GSA, GSV, GST, ZDA) to a virtual serial port for gpsd. Call `startForwardForGpsd()` to create the virtual TTY, then point gpsd at the path returned by `getGpsdDevicePath()`. The TIME HAT can also be used directly with gpsd via UART (`/dev/ttyAMA0`).
 
 **USB shortcut (L1 HAT & RTK HAT):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to the Raspberry Pi and the module appears as `/dev/ttyACM0` - gpsd can read it directly without the bridge daemon or the library. This is the simplest way to get gpsd running on these two HATs.
 
@@ -497,7 +526,7 @@ journalctl -u gnsshat-rtk-base -f
 
 ## Architecture
 
-The library is multi-threaded. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. Thread safety covers the operations documented above, not arbitrary concurrent configuration or lifecycle changes. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
+The library is multi-threaded. All navigation data access is mutex-protected, so any number of threads can call `navigation()` concurrently. Each epoch, however, wakes only one waiting thread: a fresh-data notification is consumed by the call that receives it, so threads blocked in `waitAndGetFreshNavigation()` (or `waitForEvent()`) at the same time split the epochs between them. Let one thread wait for fresh data and have the others read `navigation()`. The same holds for `waitAndGetFreshTimeMark()` and `timepulse()`. gpsd forwarding does not take epochs from your thread. Thread safety covers the operations documented above, not arbitrary concurrent configuration or lifecycle changes. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
 
 | HAT | Threads | Data Flow |
 |-----|---------|-----------|
@@ -510,7 +539,7 @@ Optional threads: timepulse interrupt (GPIO 5), NMEA forwarder for gpsd.
 ## Project Structure
 
 ```
-GnssHat/
+gnsshat/
 ├── src/
 │   ├── GnssHat.hpp / .cpp          C++ API and implementation
 │   ├── GnssHat.h / GnssHat_C.cpp   C API wrapper

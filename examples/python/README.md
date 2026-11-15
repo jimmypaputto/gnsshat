@@ -99,13 +99,13 @@ RTK Rover example with NTRIP client demonstrating:
 - Connecting to an NTRIP caster to receive RTCM3 corrections over the internet
 - Applying RTCM3 corrections to the GNSS receiver for centimeter-level accuracy
 - Real-time monitoring of RTK fix quality
-- Batched correction application with per-frame RTCM3 message identification
+- Applying the frames received since the last epoch once per navigation epoch, without an extra thread
 - Uses native `gnsshat.NtripClient` for NTRIP communication
 
-Edit the configuration constants at the top of the script to set your NTRIP caster credentials (caster_ip, port, mountpoint, username, password).
+Pass the NTRIP caster connection on the command line: `--host` (default `localhost`), `--port` (default `2101`), `--mountpoint` (default `GNSS_HAT`), `--user` and `--password` (default empty).
 
 ```bash
-python rtk_rover.py
+python rtk_rover.py --host <HOST> --port 2101 --mountpoint <MOUNT> --user <USER> --password <PWD>
 ```
 
 ### 9. print_satellites.py

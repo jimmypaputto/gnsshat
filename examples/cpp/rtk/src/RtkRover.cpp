@@ -7,8 +7,8 @@
  * with an integrated NTRIP client that receives RTCM3
  * corrections from a caster and applies them to the receiver.
  *
- * Usage: ./RtkRover [--host HOST] [--port PORT]
- *                   [--mountpoint MP] [--user U] [--password P]
+ * Usage: ./rtk-rover [--host HOST] [--port PORT]
+ *                    [--mountpoint MP] [--user U] [--password P]
  */
 
 #include <chrono>
