@@ -10,6 +10,8 @@
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
 #include "ublox/ubxmsg/UBX_CFG_RST.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
+#include "ublox/ubxmsg/UBX_CFG_VALGET.hpp"
+#include "ublox/UbxCfgKeys.hpp"
 #include "ublox/UbxParser.hpp"
 #include "common/Utils.hpp"
 
@@ -527,4 +529,38 @@ TEST(CfgRst, StartGnssFrame)
         0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x09, 0x00, 0x17, 0x76
     };
     EXPECT_EQ(frame, expected);
+}
+
+// Startup verifies every written key with VALGET, so a key missing from
+// ConfigKeySizeMap makes start() throw.
+TEST(CfgValget, DeserializesNavigationFilterKeys)
+{
+    const auto appendKey = [](std::vector<uint8_t>& frame, uint32_t key,
+        std::initializer_list<uint8_t> value)
+    {
+        for (int shift = 0; shift < 32; shift += 8)
+            frame.push_back(static_cast<uint8_t>(key >> shift));
+        frame.insert(frame.end(), value);
+    };
+
+    // Header (sync, class, id, length) + version, layer, position
+    std::vector<uint8_t> frame = {
+        0xB5, 0x62, 0x06, 0x8B, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
+    };
+    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_FIXMODE, {0x03});
+    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PDOP, {0xFA, 0x00});
+    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TDOP, {0xFA, 0x00});
+    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PACC, {0x64, 0x00});
+    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC, {0x5E, 0x01});
+
+    UBX_CFG_VALGET msg(frame);
+    const auto& data = msg.configData();
+    ASSERT_EQ(data.size(), 5u);
+    EXPECT_EQ(data[0].key, UbxCfgKeys::CFG_NAVSPG_FIXMODE);
+    EXPECT_EQ(data[0].value, (std::vector<uint8_t>{0x03}));
+    EXPECT_EQ(data[1].value, (std::vector<uint8_t>{0xFA, 0x00}));
+    EXPECT_EQ(data[2].value, (std::vector<uint8_t>{0xFA, 0x00}));
+    EXPECT_EQ(data[3].value, (std::vector<uint8_t>{0x64, 0x00}));
+    EXPECT_EQ(data[4].key, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC);
+    EXPECT_EQ(data[4].value, (std::vector<uint8_t>{0x5E, 0x01}));
 }

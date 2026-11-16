@@ -57,6 +57,7 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_RATE_TIMEREF, 1},
 
     {UbxCfgKeys::CFG_NAVSPG_DYNMODEL, 1},
+    {UbxCfgKeys::CFG_NAVSPG_FIXMODE,  1},
 
     {UbxCfgKeys::CFG_NAVSPG_INFIL_MINSVS,    1},
     {UbxCfgKeys::CFG_NAVSPG_INFIL_MAXSVS,    1},
@@ -64,6 +65,11 @@ std::unordered_map<uint32_t, uint8_t> ConfigKeySizeMap::keySizes_ = {
     {UbxCfgKeys::CFG_NAVSPG_INFIL_MINELEV,   1},
     {UbxCfgKeys::CFG_NAVSPG_INFIL_NCNOTHRS,  1},
     {UbxCfgKeys::CFG_NAVSPG_INFIL_CNOTHRS,   1},
+
+    {UbxCfgKeys::CFG_NAVSPG_OUTFIL_PDOP, 2},
+    {UbxCfgKeys::CFG_NAVSPG_OUTFIL_TDOP, 2},
+    {UbxCfgKeys::CFG_NAVSPG_OUTFIL_PACC, 2},
+    {UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC, 2},
 
     {UbxCfgKeys::CFG_TP_TP1_ENA,          1},
     {UbxCfgKeys::CFG_TP_PULSE_DEF,        1},
