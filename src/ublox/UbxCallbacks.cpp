@@ -6,11 +6,11 @@
 
 #include "ublox/Ublox.hpp"
 #include "common/Utils.hpp"
+#include "ublox/UbxClassMsgId.hpp"
 #include "GnssHat.hpp"
 
 #include "ubxmsg/UBX_ACK_ACK.hpp"
 #include "ubxmsg/UBX_ACK_NAK.hpp"
-#include "ubxmsg/UBX_CFG_VALSET.hpp"
 #include "ubxmsg/UBX_CFG_VALGET.hpp"
 #include "ubxmsg/UBX_MON_RF.hpp"
 #include "ubxmsg/UBX_MON_SPAN.hpp"
@@ -46,39 +46,6 @@ UbxCallbacks::UbxCallbacks(IUbloxConfigRegistry& configRegistry,
         EUbxMsg::UBX_ACK_NAK,
         std::ref(configRegistry)
     );
-
-    callbacks_[to_underlying(UBX_CFG_CFG)] = [](ubxmsg::IUbxMsg&) -> void {
-        // empty callback
-    };
-
-    callbacks_[to_underlying(UBX_CFG_GEOFENCE)] =
-        [](ubxmsg::IUbxMsg&) -> void {
-            // Deprecated: geofencing migrated to CFG-GEOFENCE-* via VALSET
-        };
-
-    callbacks_[to_underlying(UBX_CFG_MSG)] = [](ubxmsg::IUbxMsg&) -> void {
-        // Deprecated: message output migrated to CFG-MSGOUT-* via VALSET
-    };
-
-    callbacks_[to_underlying(UBX_CFG_NAV5)] = [](ubxmsg::IUbxMsg&) -> void {
-        // Deprecated: dynamic model migrated to CFG-NAVSPG-DYNMODEL via VALSET
-    };
-
-    callbacks_[to_underlying(UBX_CFG_PRT)] = [](ubxmsg::IUbxMsg&) -> void {
-        // Deprecated: port configuration migrated to CFG-VALSET/VALGET
-    };
-
-    callbacks_[to_underlying(UBX_CFG_RATE)] = [](ubxmsg::IUbxMsg&) -> void {
-        // Deprecated: rate configuration migrated to CFG-RATE-* via VALSET
-    };
-
-    callbacks_[to_underlying(UBX_CFG_TP5)] = [](ubxmsg::IUbxMsg&) -> void {
-        // Deprecated: timepulse configuration migrated to CFG-TP-* via VALSET
-    };
-
-    callbacks_[to_underlying(UBX_CFG_VALSET)] = [](ubxmsg::IUbxMsg&) -> void {
-        // empty callback
-    };
 
     callbacks_[to_underlying(UBX_CFG_VALGET)] = [&configRegistry](ubxmsg::IUbxMsg& ubxMsg) -> void {
         const auto& ubxCfgValget = static_cast<ubxmsg::UBX_CFG_VALGET&>(ubxMsg);
@@ -164,7 +131,9 @@ void UbxCallbacks::ackNakCb(ubxmsg::IUbxMsg& ubxMsg, EUbxMsg eUbxMsg,
 
 void UbxCallbacks::run(ubxmsg::IUbxMsg& ubxMsg, const EUbxMsg& eUbxMsg)
 {
-    callbacks_[to_underlying(eUbxMsg)](ubxMsg);
+    const auto& callback = callbacks_[to_underlying(eUbxMsg)];
+    if (callback)
+        callback(ubxMsg);
 }
 
 }  // JimmyPaputto

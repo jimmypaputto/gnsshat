@@ -20,31 +20,21 @@ class UBX_MON_VER : public IUbxMsg
 public:
     explicit UBX_MON_VER() = default;
 
-    explicit UBX_MON_VER(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return {};
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
-        // Frame: [0-1] sync, [2] class, [3] msg, [4-5] length (LE), [6..] payload
-        const uint16_t payloadLen =
-            static_cast<uint16_t>(serialized[4]) |
-            (static_cast<uint16_t>(serialized[5]) << 8);
-
         // Payload: bytes 0-29 = swVersion (30 chars), 30-39 = hwVersion (10 chars)
-        constexpr size_t payloadOffset = 6;
         constexpr size_t swLen = 30;
         constexpr size_t hwLen = 10;
         constexpr size_t extLen = 30;
 
+        const size_t payloadLen = payloadLength(serialized);
         if (payloadLen < swLen + hwLen)
-            return;
+            return false;
 
         swVersion_ = extractString(serialized, payloadOffset, swLen);
         hwVersion_ = extractString(serialized, payloadOffset + swLen, hwLen);
@@ -62,6 +52,7 @@ public:
             if (!ext.empty())
                 extensions_.push_back(std::move(ext));
         }
+        return true;
     }
 
     static std::vector<uint8_t> poll()

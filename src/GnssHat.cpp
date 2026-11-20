@@ -509,9 +509,17 @@ bool GnssHat::start(const GnssConfig& config)
 
     if constexpr (!std::is_same_v<RunStrategy, F10TRun>)
     {
-        txReady_ = std::make_unique<TxReadyInterrupt>(
-            txReadyNotifier_, config.measurementRate_Hz
-        );
+        try
+        {
+            txReady_ = std::make_unique<TxReadyInterrupt>(
+                txReadyNotifier_, config.measurementRate_Hz
+            );
+        }
+        catch (const std::runtime_error& e)
+        {
+            fprintf(stderr, "[GNSS] TX-READY interrupt: %s\r\n", e.what());
+            return false;
+        }
         txReady_->run();
     }
 

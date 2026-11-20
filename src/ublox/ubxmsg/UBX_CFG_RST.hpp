@@ -21,9 +21,10 @@ public:
         return { };
     }
 
-    void deserialize(std::span<const uint8_t>) override
+    // Input-only: the receiver never sends this message.
+    bool deserialize(std::span<const uint8_t>) override
     {
-
+        return false;
     }
 
     // navBbrMask=0x0000 (hot start), resetMode=0x01 (controlled SW reset)

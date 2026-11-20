@@ -6,7 +6,6 @@
 
 #include <cerrno>
 #include <cstdio>
-#include <exception>
 #include <stdexcept>
 
 #include <gpiod.h>
@@ -30,14 +29,14 @@ GpioInterruptLine::GpioInterruptLine(
             "[GpioInterruptLine] Failed to open gpiochip %s\r\n",
             CHIP_NAME
         );
-        std::terminate();
+        throw std::runtime_error("Failed to open gpiochip");
     }
 
     struct gpiod_line_settings* settings = gpiod_line_settings_new();
     if (!settings)
     {
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("Failed to allocate GPIO line settings");
     }
 
     gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
@@ -56,7 +55,7 @@ GpioInterruptLine::GpioInterruptLine(
     {
         gpiod_line_settings_free(settings);
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("Failed to allocate GPIO line config");
     }
 
     int rc = gpiod_line_config_add_line_settings(config, &pin_, 1, settings);
@@ -70,7 +69,7 @@ GpioInterruptLine::GpioInterruptLine(
         gpiod_line_settings_free(settings);
         gpiod_line_config_free(config);
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("Failed to configure GPIO line");
     }
 
     struct gpiod_request_config* reqCfg = gpiod_request_config_new();
@@ -101,7 +100,7 @@ GpioInterruptLine::GpioInterruptLine(
     {
         gpiod_line_request_release(lineReq_);
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("Failed to allocate GPIO event buffer");
     }
 #else
     chip_ = gpiod_chip_open_by_name(CHIP_NAME);
@@ -112,7 +111,7 @@ GpioInterruptLine::GpioInterruptLine(
             "[GpioInterruptLine] Failed to open gpiochip %s\r\n",
             CHIP_NAME
         );
-        std::terminate();
+        throw std::runtime_error("Failed to open gpiochip");
     }
 
     line_ = gpiod_chip_get_line(chip_, pin_);
@@ -124,7 +123,7 @@ GpioInterruptLine::GpioInterruptLine(
             pin_
         );
         gpiod_chip_close(chip_);
-        std::terminate();
+        throw std::runtime_error("Failed to get GPIO line");
     }
 
     int ret = -1;

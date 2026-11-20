@@ -127,7 +127,6 @@ set(LIB_SOURCES
     src/common/JPGuard.cpp
     src/common/Utils.cpp
     src/ublox/ubxmsg/IUbxMsg.cpp
-    src/ublox/ubxmsg/UBX_CFG_VALGET.cpp
     src/ublox/BaseConfig.cpp
     src/ublox/GnssConfig.cpp
     src/ublox/NavigationStore.cpp
