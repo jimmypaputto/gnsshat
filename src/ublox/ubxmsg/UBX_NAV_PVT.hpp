@@ -19,18 +19,16 @@ class UBX_NAV_PVT: public IUbxMsg
 public:
     explicit UBX_NAV_PVT() = default;
 
-    explicit UBX_NAV_PVT(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return {};
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
+        if (payloadLength(serialized) < 92)
+            return false;
+
         pvt_.date.day = serialized[13];
         pvt_.date.month = serialized[12];
         pvt_.date.year = readLE<uint16_t>(serialized, 10);
@@ -80,6 +78,7 @@ public:
         pvt_.heading = readLE<int32_t>(serialized, 70) / 100000.0;
         pvt_.speedAccuracy = readLE<uint32_t>(serialized, 74) / 1000.0;
         pvt_.headingAccuracy = readLE<uint32_t>(serialized, 78) / 100000.0;
+        return true;
     }
 
     PositionVelocityTime pvt() const

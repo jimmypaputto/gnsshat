@@ -65,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   be requested, and other GPIO failures (e.g. a gpiochip that cannot be
   opened) terminated the process, also in `enableTimepulse()`. Both now return
   `false` with the reason on stderr
+- A UBX frame with a valid checksum but a payload too short for its message
+  was read past its end (navigation, RF and geofencing data), and for
+  UBX-CFG-VALGET threw out of `start()` or terminated the process from the
+  receive thread. Such frames are now dropped
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
   configured the module as a rover, invalid base parameters were accepted and
   `rtk` on the L1 GNSS HAT was ignored. `start()` now rejects these configs

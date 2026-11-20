@@ -19,20 +19,20 @@ class UBX_MON_RF : public IUbxMsg
 public:
     explicit UBX_MON_RF() = default;
 
-    explicit UBX_MON_RF(std::span<const uint8_t> frame)
-    {
-        rfBlocks_.reserve(RfBlock::maxNumberOfRfBlocks);
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return { };
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
-        uint8_t numberOfRfBlocks = serialized[7];
+        const std::size_t length = payloadLength(serialized);
+        if (length < 4)
+            return false;
+
+        const uint8_t numberOfRfBlocks = serialized[7];
+        if (length < 4 + numberOfRfBlocks * 24u)
+            return false;
 
         rfBlocks_.clear();
 
@@ -83,6 +83,7 @@ public:
 
             rfBlocks_.push_back(rfBlock);
         }
+        return true;
     }
 
     const std::vector<RfBlock>& rfBlocks() const

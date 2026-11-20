@@ -18,11 +18,6 @@ class UBX_MON_SYS : public IUbxMsg
 public:
     explicit UBX_MON_SYS() = default;
 
-    explicit UBX_MON_SYS(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return { };
@@ -44,12 +39,11 @@ public:
     //   off 16 U2   errorCount
     //   off 18 I1   tempValue    [°C]
     //   off 19 U1[5] reserved0
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
-        constexpr size_t hdr = 6;          // sync(2)+class+id+length(2)
-        constexpr size_t payloadLen = 24;
-        if (serialized.size() < hdr + payloadLen)
-            return;
+        constexpr size_t hdr = payloadOffset;
+        if (payloadLength(serialized) < 24)
+            return false;
 
         systemHealth_.msgVersion   = serialized[hdr + 0];
         systemHealth_.bootType     = static_cast<EBootType>(serialized[hdr + 1]);
@@ -65,6 +59,7 @@ public:
         systemHealth_.errorCount   = readLE<uint16_t>(serialized, hdr + 16);
         systemHealth_.temperatureC = static_cast<int8_t>(serialized[hdr + 18]);
         systemHealth_.valid        = true;
+        return true;
     }
 
     static std::vector<uint8_t> poll()

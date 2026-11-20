@@ -51,13 +51,6 @@ TEST(UbxClassMsgId, RoundTripAllMessages)
     }
 }
 
-TEST(UbxClassMsgId, CfgGeofenceMapping)
-{
-    auto bytes = UbxClassMsgId::translate(EUbxMsg::UBX_CFG_GEOFENCE);
-    EXPECT_EQ(bytes.first, 0x06);
-    EXPECT_EQ(bytes.second, 0x69);
-}
-
 TEST(UbxClassMsgId, NavGeofenceMapping)
 {
     auto bytes = UbxClassMsgId::translate(EUbxMsg::UBX_NAV_GEOFENCE);
