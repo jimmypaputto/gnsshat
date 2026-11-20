@@ -7,41 +7,18 @@
 
 #include <vector>
 #include <cstdint>
-#include <iomanip>
 
-#include <sstream>
 #include <stdexcept>
-
-#include <unordered_map>
 
 #include "IUbxMsg.hpp"
 #include "UBX_CFG_VALSET.hpp"  // For ConfigKeyValue struct
 #include "ublox/EUbxMemoryLayer.hpp"
+#include "ublox/UbxCfgKeys.hpp"
 #include "common/Utils.hpp"
 
 
 namespace JimmyPaputto::ubxmsg
 {
-
-class ConfigKeySizeMap 
-{
-public:
-    static uint8_t getKeySize(uint32_t key) 
-    {
-        auto it = keySizes_.find(key);
-        if (it != keySizes_.end())
-            return it->second;
-
-        const std::string hexStr =
-            (std::stringstream{} << "0x" << std::hex << std::uppercase << key).str();
-        throw std::runtime_error(
-            "Unknown configuration key size for key: " +  hexStr
-        );
-    }
-
-private:
-    static std::unordered_map<uint32_t, uint8_t> keySizes_;
-};
 
 /**
  * UBX-CFG-VALGET message - Get configuration values
@@ -168,12 +145,13 @@ private:
                 (frame[offset + 3] << 24)
             );
             offset += 4;
-            
-            // Get expected value size for this key
-            uint8_t valueSize;
-            valueSize = ConfigKeySizeMap::getKeySize(key);
 
-            
+            // The value size is encoded in the key ID. A reserved size code
+            // leaves no way to find the next key, so stop parsing there.
+            const uint8_t valueSize = UbxCfgKeys::keySize(key);
+            if (valueSize == 0)
+                break;
+
             // Check if we have enough bytes for the value
             if (offset + valueSize > frame.size()) {
                 throw std::runtime_error("Insufficient data for config key value");

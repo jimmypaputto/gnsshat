@@ -58,7 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `start()` threw `Unknown configuration key size` for the navigation filters
   `fixMode`, `pdopMask_x10`, `tdopMask_x10`, `pAccMask_m` and `tAccMask_m`
   (and their C / Python equivalents), because their sizes were missing from
-  the UBX-CFG-VALGET key table used to verify the written configuration
+  the UBX-CFG-VALGET key table used to verify the written configuration. The
+  table is gone: the value size is now read from the key ID, so a key added
+  later cannot hit this again
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
   configured the module as a rover, invalid base parameters were accepted and
   `rtk` on the L1 GNSS HAT was ignored. `start()` now rejects these configs

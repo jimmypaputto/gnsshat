@@ -531,27 +531,47 @@ TEST(CfgRst, StartGnssFrame)
     EXPECT_EQ(frame, expected);
 }
 
-// Startup verifies every written key with VALGET, so a key missing from
-// ConfigKeySizeMap makes start() throw.
+namespace
+{
+
+void appendCfgKey(std::vector<uint8_t>& frame, uint32_t key,
+    std::initializer_list<uint8_t> value)
+{
+    for (int shift = 0; shift < 32; shift += 8)
+        frame.push_back(static_cast<uint8_t>(key >> shift));
+    frame.insert(frame.end(), value);
+}
+
+// Header (sync, class, id, length) + version, layer, position
+std::vector<uint8_t> valgetResponseHeader()
+{
+    return { 0xB5, 0x62, 0x06, 0x8B, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
+}
+
+}  // namespace
+
+TEST(CfgKeys, KeySizeFromKeyId)
+{
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_SPI_ENABLED), 1);  // L
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_SPI_MAXFF), 1);    // U1
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_RATE_MEAS), 2);    // U2
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_UART1_BAUDRATE), 4);
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_TP_DUTY_TP1), 8);  // R8
+    EXPECT_EQ(UbxCfgKeys::keySize(0x00000001), 0);
+    EXPECT_EQ(UbxCfgKeys::keySize(0x60000001), 0);
+    EXPECT_EQ(UbxCfgKeys::keySize(0x70000001), 0);
+}
+
+// Startup verifies every written key with VALGET, so a key whose value size
+// is not known makes start() throw.
 TEST(CfgValget, DeserializesNavigationFilterKeys)
 {
-    const auto appendKey = [](std::vector<uint8_t>& frame, uint32_t key,
-        std::initializer_list<uint8_t> value)
-    {
-        for (int shift = 0; shift < 32; shift += 8)
-            frame.push_back(static_cast<uint8_t>(key >> shift));
-        frame.insert(frame.end(), value);
-    };
-
-    // Header (sync, class, id, length) + version, layer, position
-    std::vector<uint8_t> frame = {
-        0xB5, 0x62, 0x06, 0x8B, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
-    };
-    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_FIXMODE, {0x03});
-    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PDOP, {0xFA, 0x00});
-    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TDOP, {0xFA, 0x00});
-    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PACC, {0x64, 0x00});
-    appendKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC, {0x5E, 0x01});
+    auto frame = valgetResponseHeader();
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_FIXMODE, {0x03});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PDOP, {0xFA, 0x00});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TDOP, {0xFA, 0x00});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PACC, {0x64, 0x00});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC, {0x5E, 0x01});
 
     UBX_CFG_VALGET msg(frame);
     const auto& data = msg.configData();
@@ -563,4 +583,39 @@ TEST(CfgValget, DeserializesNavigationFilterKeys)
     EXPECT_EQ(data[3].value, (std::vector<uint8_t>{0x64, 0x00}));
     EXPECT_EQ(data[4].key, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC);
     EXPECT_EQ(data[4].value, (std::vector<uint8_t>{0x5E, 0x01}));
+}
+
+// Keys the library never names (e.g. a newer firmware's) still parse,
+// because the value size comes from the key ID.
+TEST(CfgValget, DeserializesKeysOutsideUbxCfgKeys)
+{
+    auto frame = valgetResponseHeader();
+    appendCfgKey(frame, 0x10FF0001, {0x01});
+    appendCfgKey(frame, 0x30FF0002, {0x34, 0x12});
+    appendCfgKey(frame, 0x40FF0003, {0x78, 0x56, 0x34, 0x12});
+    appendCfgKey(frame, 0x50FF0004, {1, 2, 3, 4, 5, 6, 7, 8});
+
+    UBX_CFG_VALGET msg(frame);
+    const auto& data = msg.configData();
+    ASSERT_EQ(data.size(), 4u);
+    EXPECT_EQ(data[0].value.size(), 1u);
+    EXPECT_EQ(msg.getConfigValueAs<uint16_t>(0x30FF0002), 0x1234);
+    EXPECT_EQ(msg.getConfigValueAs<uint32_t>(0x40FF0003), 0x12345678u);
+    EXPECT_EQ(data[3].value, (std::vector<uint8_t>{1, 2, 3, 4, 5, 6, 7, 8}));
+}
+
+// A reserved size code leaves no way to find the next key, so parsing stops
+// there and keeps the pairs read before it.
+TEST(CfgValget, StopsAtReservedSizeCode)
+{
+    auto frame = valgetResponseHeader();
+    appendCfgKey(frame, UbxCfgKeys::CFG_RATE_MEAS, {0xE8, 0x03});
+    appendCfgKey(frame, 0x60FF0001, {0xAA});
+    appendCfgKey(frame, UbxCfgKeys::CFG_SPI_ENABLED, {0x01});
+
+    UBX_CFG_VALGET msg(frame);
+    const auto& data = msg.configData();
+    ASSERT_EQ(data.size(), 1u);
+    EXPECT_EQ(data[0].key, UbxCfgKeys::CFG_RATE_MEAS);
+    EXPECT_EQ(msg.getConfigValueAs<uint16_t>(UbxCfgKeys::CFG_RATE_MEAS), 1000);
 }

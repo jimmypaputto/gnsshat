@@ -155,6 +155,19 @@ constexpr uint32_t CFG_TMODE_FIXED_POS_ACC  = 0x4003000f;
 constexpr uint32_t CFG_TMODE_SVIN_MIN_DUR   = 0x40030010;
 constexpr uint32_t CFG_TMODE_SVIN_ACC_LIMIT = 0x40030011;
 
+constexpr uint8_t keySize(uint32_t key)
+{
+    switch ((key >> 28) & 0x07)
+    {
+        case 0x01:
+        case 0x02: return 1;
+        case 0x03: return 2;
+        case 0x04: return 4;
+        case 0x05: return 8;
+        default:   return 0;
+    }
+}
+
 }  // JimmyPaputto::UbxCfgKeys
 
 #endif  // JIMMY_PAPUTTO_UBX_CFG_KEYS_HPP_
