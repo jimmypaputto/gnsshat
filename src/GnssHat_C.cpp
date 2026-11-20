@@ -125,10 +125,6 @@ static_assert(static_cast<int>(ETimeMarkTimeBase::ReceiverTime) == JP_GNSS_TIME_
 static_assert(static_cast<int>(ETimeMarkTimeBase::GnssTime) == JP_GNSS_TIME_MARK_TIME_BASE_GNSS);
 static_assert(static_cast<int>(ETimeMarkTimeBase::UTC) == JP_GNSS_TIME_MARK_TIME_BASE_UTC);
 
-static_assert(static_cast<int>(ETimeMarkTriggerEdge::Rising) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING);
-static_assert(static_cast<int>(ETimeMarkTriggerEdge::Falling) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING);
-static_assert(static_cast<int>(ETimeMarkTriggerEdge::Toggle) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE);
-
 namespace
 {
 
@@ -1206,32 +1202,6 @@ bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
 
     *time_mark = convert_time_mark(*fresh);
     return true;
-}
-
-bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat)
-{
-    if (!hat || !hat->instance)
-        return false;
-
-    return hat->instance->enableTimeMarkTrigger();
-}
-
-void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat)
-{
-    if (!hat || !hat->instance)
-        return;
-
-    hat->instance->disableTimeMarkTrigger();
-}
-
-void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
-    jp_gnss_time_mark_trigger_edge_t edge)
-{
-    if (!hat || !hat->instance)
-        return;
-
-    hat->instance->triggerTimeMark(
-        static_cast<ETimeMarkTriggerEdge>(edge));
 }
 
 const char* jp_gnss_time_mark_mode_to_string(

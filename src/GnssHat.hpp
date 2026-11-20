@@ -80,11 +80,6 @@ public:
     virtual std::string hwVersion() const = 0;
     virtual std::vector<std::string> monVerExtensions() const = 0;
 
-    virtual bool enableTimeMarkTrigger() = 0;
-    virtual void disableTimeMarkTrigger() = 0;
-    virtual void triggerTimeMark(
-        ETimeMarkTriggerEdge edge = ETimeMarkTriggerEdge::Toggle) = 0;
-
     // Blocks until the next `event` like the waits above, but for at most
     // `timeout`, for code that has work to do between waits, e.g. a language
     // binding running signal handlers. Ready: read the data with navigation()

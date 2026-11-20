@@ -165,13 +165,6 @@ typedef enum
     JP_GNSS_TIME_MARK_TIME_BASE_UTC      = 0x02
 } jp_gnss_time_mark_time_base_t;
 
-typedef enum
-{
-    JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING  = 0x00,
-    JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING = 0x01,
-    JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE  = 0x02
-} jp_gnss_time_mark_trigger_edge_t;
-
 typedef struct
 {
     float geometric;
@@ -620,10 +613,6 @@ bool jp_gnss_hat_get_time_mark(jp_gnss_hat_t* hat,
  * input or the waits are stopped. */
 bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
     jp_gnss_time_mark_t* time_mark);
-bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat);
-void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat);
-void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
-    jp_gnss_time_mark_trigger_edge_t edge);
 
 /* 1 Hz, portable model, everything optional off. Timepulse stays disabled
  * until timepulse_pin_config.active is set; it then defaults to 1 Hz,
