@@ -112,31 +112,14 @@ auto main() -> int
         return -1;
     }
     printf("Startup done, ublox configured\r\n");
+    printf("Waiting for edges on the HAT's external EXTINT input\r\n\r\n");
 
-    ubxHat->enableTimeMarkTrigger();
-    printf("TimeMark trigger enabled, toggling EXTINT every 5s\r\n\r\n");
-
-    // Before toggleThread: it must inherit the blocked signals.
     auto signalsInterrupt = signalsHandler(*ubxHat);
-
-    // Toggles EXTINT every 5 navigation epochs (5 s at 1 Hz) and ends when
-    // shutdown() stops its wait.
-    std::thread toggleThread([&ubxHat] {
-        int epoch = 0;
-        while (ubxHat->waitAndGetFreshNavigation())
-        {
-            if (epoch++ % 5 != 0)
-                continue;
-            ubxHat->triggerTimeMark();
-            printf("[EXTINT] toggled\r\n");
-        }
-    });
 
     while (const auto timeMark = ubxHat->waitAndGetFreshTimeMark())
         printTimeMark(*timeMark);
 
     signalsInterrupt.join();
-    toggleThread.join();
 
     printf("Exiting...\r\n");
     return 0;

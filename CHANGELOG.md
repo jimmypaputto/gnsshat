@@ -43,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   closed")` instead of "GNSS HAT not initialized", and calling `__init__()` on
   an initialized object raises instead of opening the HAT a second time
 
+### Removed
+- **Breaking:** `enableTimeMarkTrigger()`, `disableTimeMarkTrigger()`,
+  `triggerTimeMark()` and `ETimeMarkTriggerEdge`, with their C
+  (`jp_gnss_hat_*_time_mark_trigger()`, `jp_gnss_hat_trigger_time_mark()`,
+  `jp_gnss_time_mark_trigger_edge_t`) and Python
+  (`enable_time_mark_trigger()`, `disable_time_mark_trigger()`,
+  `trigger_time_mark()`, `TimeMarkTriggerEdge`) counterparts. They drove
+  EXTINT from GPIO 17, but on the TIME HAT EXTINT is an external input that
+  is not connected to the Raspberry Pi GPIO. Time marks still come through
+  `timeMark()` / `waitAndGetFreshTimeMark()`
+
 ### Fixed
 - `start()` threw `Unknown configuration key size` for the navigation filters
   `fixMode`, `pdopMask_x10`, `tdopMask_x10`, `pAccMask_m` and `tAccMask_m`

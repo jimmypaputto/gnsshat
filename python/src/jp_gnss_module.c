@@ -3632,45 +3632,6 @@ static PyObject* GnssHat_wait_and_get_fresh_time_mark(GnssHat* self,
     return convert_time_mark_to_python(&tm);
 }
 
-static PyObject* GnssHat_enable_time_mark_trigger(GnssHat* self,
-    PyObject* args)
-{
-    CHECK_HAT(self);
-    bool result;
-    HAT_CALL_EXCLUSIVE(self,
-        result = jp_gnss_hat_enable_time_mark_trigger(self->hat));
-    if (!result)
-    {
-        PyErr_SetString(PyExc_RuntimeError,
-            "Failed to enable time mark trigger");
-        return NULL;
-    }
-    Py_RETURN_NONE;
-}
-
-static PyObject* GnssHat_disable_time_mark_trigger(GnssHat* self,
-    PyObject* args)
-{
-    CHECK_HAT(self);
-    HAT_CALL_EXCLUSIVE(self, jp_gnss_hat_disable_time_mark_trigger(self->hat));
-    Py_RETURN_NONE;
-}
-
-static PyObject* GnssHat_trigger_time_mark(GnssHat* self, PyObject* args)
-{
-    CHECK_HAT(self);
-    int edge = JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE;
-
-    if (!PyArg_ParseTuple(args, "|i", &edge))
-        return NULL;
-
-    /* Parsing the argument can run Python code, which can close the HAT. */
-    CHECK_HAT(self);
-    HAT_CALL_EXCLUSIVE(self, jp_gnss_hat_trigger_time_mark(self->hat,
-        (jp_gnss_time_mark_trigger_edge_t)edge));
-    Py_RETURN_NONE;
-}
-
 static PyObject* GnssHat_shutdown(GnssHat* self, PyObject* args)
 {
     CHECK_HAT(self);
@@ -3858,25 +3819,6 @@ static PyMethodDef GnssHat_methods[] = {
         "handlers run meanwhile, so Ctrl+C raises KeyboardInterrupt. Returns "
         "TimeMark, or None when the HAT has no time mark input or the waits "
         "are stopped."
-    },
-    {
-        "enable_time_mark_trigger",
-        (PyCFunction)GnssHat_enable_time_mark_trigger,
-        METH_NOARGS,
-        "Enable time mark trigger on the EXTINT pin."
-    },
-    {
-        "disable_time_mark_trigger",
-        (PyCFunction)GnssHat_disable_time_mark_trigger,
-        METH_NOARGS,
-        "Disable time mark trigger."
-    },
-    {
-        "trigger_time_mark",
-        (PyCFunction)GnssHat_trigger_time_mark,
-        METH_VARARGS,
-        "Trigger a time mark event. Optional edge argument "
-        "(TimeMarkTriggerEdge, default TOGGLE)."
     },
     {
         "close",
@@ -5882,13 +5824,6 @@ PyMODINIT_FUNC PyInit_gnsshat(void)
         {"RECEIVER", JP_GNSS_TIME_MARK_TIME_BASE_RECEIVER},
         {"GNSS",     JP_GNSS_TIME_MARK_TIME_BASE_GNSS},
         {"UTC",      JP_GNSS_TIME_MARK_TIME_BASE_UTC}
-    );
-
-    /* ── TimeMarkTriggerEdge ────────────────────────────────────────── */
-    MAKE_ENUM("TimeMarkTriggerEdge",
-        {"RISING",  JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING},
-        {"FALLING", JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING},
-        {"TOGGLE",  JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE}
     );
 
     /* ── GnssId ─────────────────────────────────────────────────────── */

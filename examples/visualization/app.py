@@ -2649,17 +2649,10 @@ def api_set_config():
             gps_state['current_config'] = config
             gps_state['reference_position'] = None  # Reset so map re-calibrates
 
-            # Enable time mark trigger if configured
+            # Time marks come from the HAT's external EXTINT input
             timing = config.get('timing')
-            tm_enabled = bool(timing and timing.get('enable_time_mark'))
-            gps_state['time_mark_enabled'] = tm_enabled
-            if tm_enabled:
-                try:
-                    hat.enable_time_mark_trigger()
-                    print("TimeMark trigger enabled")
-                except Exception as e:
-                    print(f"Warning: could not enable time mark trigger: {e}")
-                    gps_state['time_mark_enabled'] = False
+            gps_state['time_mark_enabled'] = bool(
+                timing and timing.get('enable_time_mark'))
 
             gps_state['running'] = True
             gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
@@ -2808,17 +2801,10 @@ def start_gps_native():
         gps_state['hat_name'] = hat_name
         gps_state['current_config'] = config
 
-        # Enable time mark trigger if configured
+        # Time marks come from the HAT's external EXTINT input
         timing = config.get('timing')
-        tm_enabled = bool(timing and timing.get('enable_time_mark'))
-        gps_state['time_mark_enabled'] = tm_enabled
-        if tm_enabled:
-            try:
-                hat.enable_time_mark_trigger()
-                print("TimeMark trigger enabled")
-            except Exception as e:
-                print(f"Warning: could not enable time mark trigger: {e}")
-                gps_state['time_mark_enabled'] = False
+        gps_state['time_mark_enabled'] = bool(
+            timing and timing.get('enable_time_mark'))
 
         gps_state['running'] = True
         gps_state['thread'] = _native_threading.Thread(target=native_reader_thread, daemon=True)
@@ -2891,13 +2877,7 @@ def stop_gps():
 
     gps_state['running'] = False
 
-    # Disable time mark trigger before stopping
-    if gps_state.get('time_mark_enabled') and gps_state.get('hat'):
-        try:
-            gps_state['hat'].disable_time_mark_trigger()
-        except Exception:
-            pass
-        gps_state['time_mark_enabled'] = False
+    gps_state['time_mark_enabled'] = False
     
     if gps_state['thread']:
         gps_state['thread'].join(timeout=5)

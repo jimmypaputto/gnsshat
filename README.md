@@ -29,7 +29,7 @@ The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 | HAT | u-blox Module | Interface | USB | RTK | Time Base | Time Mark | Geofencing |
 |-----|---------------|-----------|-----|-----|-----------|-----------|------------|
 | L1 GNSS HAT | NEO-M9N | SPI | Yes | -- | -- | -- | Up to 4 zones |
-| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | -- | Survey-In / Fixed Position | EXTINT GPIO 17 | -- |
+| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | -- | Survey-In / Fixed Position | External EXTINT input | -- |
 | L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Yes | Base & Rover | -- | -- | Up to 4 zones |
 
 ## Installation
@@ -313,8 +313,6 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 | `timepulse(stop = {})` | Block until next timepulse; `false` when not enabled or stopped |
 | `timeMark()` | Return last `TimeMark` or `std::nullopt` (non-blocking) |
 | `waitAndGetFreshTimeMark(stop = {})` | Block until new TimeMark event arrives; `std::nullopt` without a time mark input or once stopped |
-| `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
-| `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
 | `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, `shutdown()`, destruction) |
 | `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
@@ -442,9 +440,9 @@ See the TimeBase examples in `examples/cpp/time-base/`, `examples/c/time-base/` 
 
 ### TimeMark (L1/L5 TIME HAT only)
 
-Precise event timestamping via the UBX-TIM-TM2 message. The receiver detects rising and falling edges on the EXTINT pin (GPIO 17) and timestamps them with nanosecond accuracy using GNSS time.
+Precise event timestamping via the UBX-TIM-TM2 message. The receiver detects rising and falling edges on the HAT's external EXTINT input and timestamps them with nanosecond accuracy using GNSS time. EXTINT is not connected to the Raspberry Pi GPIO: the trigger signal comes from your own hardware.
 
-Enable with `enableTimeMark = true` in config, then read events with `waitAndGetFreshTimeMark()` (blocking) or `timeMark()` (polling). The library can also drive the EXTINT pin itself via `enableTimeMarkTrigger()` + `triggerTimeMark()` for software-triggered time marks.
+Enable with `enableTimeMark = true` in config, then read events with `waitAndGetFreshTimeMark()` (blocking) or `timeMark()` (polling).
 
 Each `TimeMark` contains: rising/falling edge TOW (ms + sub-ms ns), week number, event count, accuracy estimate (ns), time base (Receiver/GNSS/UTC), and edge detection flags.
 
@@ -465,9 +463,8 @@ GnssConfig config {
 };
 
 hat->start(config);
-hat->enableTimeMarkTrigger();
-hat->triggerTimeMark();  // toggle EXTINT
 
+// Blocks until an edge arrives on the external EXTINT input
 if (const auto tm = hat->waitAndGetFreshTimeMark())
     printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
         tm->towRising_ms, tm->towSubRising_ns, tm->accuracyEstimate_ns);

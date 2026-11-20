@@ -1,7 +1,5 @@
 # Jimmy Paputto 2026
 
-import threading
-
 from jimmypaputto import gnsshat
 
 
@@ -23,17 +21,6 @@ def create_config() -> dict:
     }
 
 
-def toggle_thread_func(hat):
-    # Toggles EXTINT every 5 navigation epochs (5 s at 1 Hz) and ends when
-    # shutdown() stops its wait.
-    epoch = 0
-    while hat.wait_and_get_fresh_navigation() is not None:
-        if epoch % 5 == 0:
-            hat.trigger_time_mark(gnsshat.TimeMarkTriggerEdge.TOGGLE)
-            print("[EXTINT] toggled")
-        epoch += 1
-
-
 def main():
     try:
         with gnsshat.GnssHat() as hat:
@@ -44,20 +31,10 @@ def main():
                 return -1
 
             print("Startup done, ublox configured")
+            print("Waiting for edges on the HAT's external EXTINT input\n")
 
-            hat.enable_time_mark_trigger()
-            print("TimeMark trigger enabled, toggling EXTINT every 5s\n")
-
-            toggle = threading.Thread(target=toggle_thread_func, args=(hat,))
-            toggle.start()
-            try:
-                while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
-                    print(tm)
-            finally:
-                # Ends the wait in the toggle thread.
-                hat.shutdown()
-                toggle.join()
-                hat.disable_time_mark_trigger()
+            while (tm := hat.wait_and_get_fresh_time_mark()) is not None:
+                print(tm)
     except KeyboardInterrupt:
         print("\nStopping time mark monitoring...")
 

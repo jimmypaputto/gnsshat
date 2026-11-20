@@ -158,9 +158,6 @@ config = {
 | `rtk_apply_corrections(frames)` | Send RTCM3 correction frames to RTK rover. Takes `list[bytes]`. |
 | `get_time_mark()` | Get current time mark data (non-blocking). Returns `TimeMark` or `None`. |
 | `wait_and_get_fresh_time_mark()` | Block until new time mark event arrives. Releases GIL; Ctrl+C raises `KeyboardInterrupt`. Returns `None` when the HAT has no time mark input or the waits are stopped. |
-| `enable_time_mark_trigger()` | Enable EXTINT pin (GPIO 17) as output for software-triggered time marks. |
-| `disable_time_mark_trigger()` | Disable EXTINT trigger. |
-| `trigger_time_mark(edge)` | Trigger a time mark event. Optional `TimeMarkTriggerEdge` arg (default `TOGGLE`). |
 | `shutdown()` | Stop all waits and gpsd forwarding for good: the waits return `None` / `False` and `start()` returns `False` from then on. Releases GIL. Idempotent; safe from another thread and from a Python signal handler. Does not close the HAT: join the threads that use it, then `close()`. |
 | `close()` | Stop the waits and gpsd forwarding and release the HAT. Threads blocked in `wait_and_get_fresh_*()` or `timepulse()` get `None` / `False`. Idempotent. |
 | `closed` | `True` once `close()` has been called. Any other method then raises `RuntimeError`. |
@@ -475,6 +472,5 @@ All enums are `IntEnum` types accessed as `gnsshat.<EnumName>.<MEMBER>`.
 | `TimeMarkMode` | `SINGLE`, `RUNNING` |
 | `TimeMarkRun` | `ARMED`, `STOPPED` |
 | `TimeMarkTimeBase` | `RECEIVER`, `GNSS`, `UTC` |
-| `TimeMarkTriggerEdge` | `RISING`, `FALLING`, `TOGGLE` |
 | `BootType` | `UNKNOWN`, `COLD_START`, `WATCHDOG`, `HARDWARE_RESET`, `HARDWARE_BACKUP`, `SOFTWARE_BACKUP`, `SOFTWARE_RESET`, `VIO_FAIL`, `VDD_X_FAIL`, `VDD_RF_FAIL`, `V_CORE_HIGH_FAIL`, `SYSTEM_RESET` |
 | `NtripLogLevel` | `ERROR`, `WARNING`, `INFO`, `DEBUG` |

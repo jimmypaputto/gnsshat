@@ -23,7 +23,6 @@
 #include "ublox/Run.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/Timepulse.hpp"
-#include "ublox/TimeMarkTrigger.hpp"
 #include "ublox/TxReady.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/Ublox.hpp"
@@ -107,10 +106,6 @@ public:
     std::optional<TimeMark> timeMark() const override;
     std::optional<TimeMark> waitAndGetFreshTimeMark(
         std::stop_token stop) override;
-
-    bool enableTimeMarkTrigger() override;
-    void disableTimeMarkTrigger() override;
-    void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
 
     EWaitResult waitForEvent(EHatEvent event,
         std::chrono::milliseconds timeout) override;
@@ -217,7 +212,6 @@ public:
     ~GnssL1L5TimeHat() override
     {
         shutdownAndWaitForBlockingCalls();
-        disableTimeMarkTrigger();
         stopUbloxThread();
         nmeaForwarder_.reset();
     }
@@ -263,58 +257,6 @@ public:
     {
         return navigationStore_.systemHealth();
     }
-
-    bool enableTimeMarkTrigger() override
-    {
-        if (timeMarkTriggerEnabled_.load())
-        {
-            fprintf(stderr, "[GNSS] TimeMarkTrigger already enabled\r\n");
-            return true;
-        }
-
-        timeMarkTrigger_ = std::make_unique<TimeMarkTrigger>();
-        timeMarkTriggerEnabled_.store(true);
-        return true;
-    }
-
-    void disableTimeMarkTrigger() override
-    {
-        if (!timeMarkTriggerEnabled_.load())
-            return;
-
-        timeMarkTrigger_.reset();
-        timeMarkTriggerEnabled_.store(false);
-    }
-
-    void triggerTimeMark(ETimeMarkTriggerEdge edge) override
-    {
-        if (!timeMarkTriggerEnabled_.load() || !timeMarkTrigger_)
-        {
-            fprintf(
-                stderr,
-                "[GNSS] TimeMarkTrigger not enabled. "
-                "Call enableTimeMarkTrigger() first.\r\n"
-            );
-            return;
-        }
-
-        switch (edge)
-        {
-            case ETimeMarkTriggerEdge::Rising:
-                timeMarkTrigger_->raise();
-                break;
-            case ETimeMarkTriggerEdge::Falling:
-                timeMarkTrigger_->fall();
-                break;
-            case ETimeMarkTriggerEdge::Toggle:
-                timeMarkTrigger_->toggle();
-                break;
-        }
-    }
-
-private:
-    std::unique_ptr<TimeMarkTrigger> timeMarkTrigger_;
-    std::atomic<bool> timeMarkTriggerEnabled_{false};
 };
 
 class GnssL1L5TRtkHat : public GnssHat
@@ -693,27 +635,6 @@ std::optional<TimeMark> GnssHat::waitAndGetFreshTimeMark(std::stop_token)
         "Use L1/L5 GNSS TIME HAT.\r\n",
         static_cast<int>(name().size()), name().data());
     return std::nullopt;
-}
-
-bool GnssHat::enableTimeMarkTrigger()
-{
-    fprintf(stderr,
-        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
-        "Use L1/L5 GNSS TIME HAT.\r\n",
-        static_cast<int>(name().size()), name().data());
-    return false;
-}
-
-void GnssHat::disableTimeMarkTrigger()
-{
-}
-
-void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge)
-{
-    fprintf(stderr,
-        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
-        "Use L1/L5 GNSS TIME HAT.\r\n",
-        static_cast<int>(name().size()), name().data());
 }
 
 bool GnssHat::startForwardForGpsd()
