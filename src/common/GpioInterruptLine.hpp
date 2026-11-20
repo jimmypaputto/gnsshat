@@ -37,8 +37,8 @@ public:
         Error
     };
 
-    // Throws std::runtime_error if the line is taken, e.g. by the kernel PPS
-    // driver. Any other failure terminates the process.
+    // Throws std::runtime_error if the line cannot be opened, e.g. when it is
+    // taken by the kernel PPS driver or another process.
     GpioInterruptLine(unsigned int pin, Edge edge, const char* consumer);
     ~GpioInterruptLine();
 

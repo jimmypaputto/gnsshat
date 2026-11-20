@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the UBX-CFG-VALGET key table used to verify the written configuration. The
   table is gone: the value size is now read from the key ID, so a key added
   later cannot hit this again
+- `start()` threw `std::runtime_error` when the TX-READY GPIO line could not
+  be requested, and other GPIO failures (e.g. a gpiochip that cannot be
+  opened) terminated the process, also in `enableTimepulse()`. Both now return
+  `false` with the reason on stderr
 - `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
   configured the module as a rover, invalid base parameters were accepted and
   `rtk` on the L1 GNSS HAT was ignored. `start()` now rejects these configs
