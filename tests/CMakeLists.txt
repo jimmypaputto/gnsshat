@@ -16,6 +16,7 @@ add_executable(GnssHatTests
     TestUbxMessages.cpp
     TestRtcm3.cpp
     TestRunAllocations.cpp
+    TestStartup.cpp
     TestUbxClassMsgId.cpp
     TestNtrip.cpp
     TestHatLifecycle.cpp
