@@ -25,6 +25,8 @@ namespace JimmyPaputto
 class UbxParser final
 {
 public:
+    static constexpr std::size_t maxFrameSize = 4096;
+
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
         NavigationStore& navigationStore, Notifier& timeMarkNotifier);
 

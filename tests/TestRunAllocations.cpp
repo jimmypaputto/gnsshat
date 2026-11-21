@@ -110,6 +110,14 @@ std::vector<uint8_t> navPvt(uint8_t second)
     return ubxFrame(0x01, 0x07, payload);
 }
 
+std::vector<uint8_t> navPvtHeader(uint16_t length)
+{
+    return {
+        0xB5, 0x62, 0x01, 0x07,
+        static_cast<uint8_t>(length), static_cast<uint8_t>(length >> 8)
+    };
+}
+
 std::vector<uint8_t> navDop()
 {
     return ubxFrame(0x01, 0x04, std::vector<uint8_t>(18, 0));
@@ -398,4 +406,40 @@ TEST(RunAllocations, Rtcm3RoverTakesBatchesWithoutCopying)
     stop.request_stop();
     EXPECT_FALSE(store.waitForFrames(stop.get_token(), frames));
     EXPECT_TRUE(frames.empty());
+}
+
+TEST(RunResync, ParserSkipsHeaderWithImpossibleLength)
+{
+    M9NHarness hat;
+    const uint16_t tooLong = UbxParser::maxFrameSize - 8 + 1;
+
+    const auto unfinished =
+        hat.parser.parse(concat({ navPvtHeader(tooLong), navPvt(7) }));
+
+    EXPECT_TRUE(unfinished.empty());
+    EXPECT_EQ(hat.navigationStore.navigation().pvt.utc.ss, 7);
+}
+
+TEST(RunResync, ParserKeepsLongestFrameAsUnfinished)
+{
+    M9NHarness hat;
+    const uint16_t longest = UbxParser::maxFrameSize - 8;
+    const auto bytes = concat({ navPvt(7), navPvtHeader(longest), navPvt(8) });
+
+    const auto unfinished = hat.parser.parse(bytes);
+
+    EXPECT_EQ(unfinished.size(), bytes.size() - navPvt(7).size());
+    EXPECT_EQ(hat.navigationStore.navigation().pvt.utc.ss, 7);
+}
+
+TEST(RunResync, M9NKeepsNavigatingAfterHeaderWithImpossibleLength)
+{
+    M9NHarness hat;
+    hat.receive(navPvt(1));
+
+    hat.receive(navPvtHeader(0xFFFF));
+    for (uint8_t second = 2; second <= 61; second++)
+        hat.receive(navPvt(second));
+
+    EXPECT_EQ(hat.navigationStore.navigation().pvt.utc.ss, 61);
 }

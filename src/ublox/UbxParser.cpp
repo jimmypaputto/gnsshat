@@ -84,6 +84,12 @@ std::span<const uint8_t> UbxParser::extractFrames(
 
         const std::ptrdiff_t payloadSize = frameBegin[4] | (frameBegin[5] << 8);
         const std::ptrdiff_t frameSize = headerSize + payloadSize + checksumSize;
+        if (frameSize > static_cast<std::ptrdiff_t>(maxFrameSize))
+        {
+            searchFrom = frameBegin + 1;
+            continue;
+        }
+
         if (available < frameSize)
             return { frameBegin, buffer.end() };
 

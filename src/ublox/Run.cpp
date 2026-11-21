@@ -32,6 +32,8 @@ M9NRun::M9NRun(ICommDriver& commDriver, UbxParser& ubxParser,
 void M9NRun::execute(std::stop_token stoken)
 {
     constexpr uint32_t rxBatchSize = 1024;
+    static_assert(UbxParser::maxFrameSize <= runRxBuffSize - rxBatchSize + 1,
+        "An unfinished frame must always be completable in the buffer");
 
     // The previous call stopped on a full buffer, so the module still holds
     // data and will not raise a new TX-READY edge to wake us.
