@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The receive thread no longer allocates heap memory after `start()`:
+  frames are parsed in place and message buffers are sized for the largest
+  message up front. The copy returned by `waitAndGetFreshNavigation()` is the
+  only allocation left per epoch
+
+### Fixed
+- A UBX header with a corrupted length field could stop the receive thread
+  from reading the module for good: once the claimed frame no longer fit the
+  8 KB receive buffer, the thread spun at 100% CPU and navigation froze until
+  the HAT was restarted. A header claiming a frame over 4 KB, more than any
+  message the library reads, is now skipped as a false sync
+- A UBX frame was dropped whenever a read ended right after its first byte.
+  In `start()` this mostly hit an acknowledgement, so about one start in 50
+  waited 5 s and logged "Poll failed for key group", or logged "value
+  mismatch: got 0x(empty)" and wrote an unchanged configuration again.
+  Navigation messages could be dropped the same way
+- `start()` on a receiver whose SPI settings were not configured yet, e.g.
+  after a power cycle without `saveToFlash`, waited 5 s in about half of the
+  starts and logged "VALSET failed for key group: [0x20640001, ...]". The
+  receiver applies new SPI settings while the transfer that carried them is
+  still running, which bit-shifts its acknowledgement. Commands now go in a
+  transfer of their own size, and the bus stays idle for 10 ms after one
+  that changes the SPI settings
+- After the receiver rejected a configuration command with UBX-ACK-NAK,
+  `start()` still waited out the 5 s acknowledgement timeout, up to three
+  times per configuration step. The rejection now ends the wait at once and
+  is logged as "Message 0x.. 0x.. rejected by the receiver"
+- Navigation fields whose message had not arrived yet, such as the DOP of
+  the first epoch, held uninitialised memory instead of zeros
+
 ## [2.0.0] - 2026-11-21
 
 ### Added
