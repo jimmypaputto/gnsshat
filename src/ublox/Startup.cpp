@@ -772,6 +772,25 @@ std::vector<uint8_t> StartupBase::getExpectedValue(const uint32_t key)
     return {};
 }
 
+static bool changesSpiPort(std::span<const uint8_t> valset)
+{
+    // Keys follow the UBX header and the version, layers and reserved bytes.
+    constexpr std::size_t firstKeyOffset = 6 + 4;
+    constexpr std::size_t keyLength = 4;
+    constexpr std::size_t checksumSize = 2;
+    const std::size_t end = valset.size() - checksumSize;
+
+    for (std::size_t offset = firstKeyOffset; offset + keyLength <= end; )
+    {
+        const auto key = readLE<uint32_t>(valset, offset);
+        if (UbxCfgKeys::groupId(key)
+            == UbxCfgKeys::groupId(UbxCfgKeys::CFG_SPI_ENABLED))
+            return true;
+        offset += keyLength + UbxCfgKeys::keySize(key);
+    }
+    return false;
+}
+
 bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
 {
     bool& ack = configRegistry_.ack()[to_underlying(msgType)];
@@ -787,15 +806,15 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
         return false;
     };
 
-    // The receiver applies a VALSET up to 2 ms after the frame, and when it
-    // changes the SPI port settings, whatever a transfer clocks out meanwhile
-    // comes out bit-shifted. The frame therefore goes in a transfer of its
-    // own, and after a VALSET the bus stays idle until it has been applied.
-    constexpr auto valsetSettleTime = std::chrono::milliseconds(10);
+    // The receiver applies new SPI port settings up to 2 ms after the frame,
+    // and whatever a transfer clocks out meanwhile comes out bit-shifted. The
+    // frame therefore goes in a transfer of its own, and the bus stays idle
+    // until the new settings are in place.
+    constexpr auto spiPortSettleTime = std::chrono::milliseconds(10);
     std::vector<uint8_t> commandRxBuff(payload.size(), 0);
     commDriver_.transmitReceive(payload, commandRxBuff);
-    if (msgType == EUbxMsg::UBX_CFG_VALSET)
-        std::this_thread::sleep_for(valsetSettleTime);
+    if (msgType == EUbxMsg::UBX_CFG_VALSET && changesSpiPort(payload))
+        std::this_thread::sleep_for(spiPortSettleTime);
 
     const auto unfinishedFrame = ubxParser_.parse(commandRxBuff);
     std::ranges::copy(unfinishedFrame, rxBuff_.begin());

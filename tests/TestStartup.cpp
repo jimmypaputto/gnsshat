@@ -164,6 +164,16 @@ struct StartupHarness
     TestableStartup startup{receiver, configRegistry, parser};
 };
 
+// Time from the VALSET leaving to the first read after it.
+std::optional<std::chrono::nanoseconds> idleAfterValset(
+    const FakeReceiver& receiver)
+{
+    for (const auto& command : receiver.commands)
+        if (command.frame[3] == 0x8A && command.firstReadAt)
+            return *command.firstReadAt - command.sentAt;
+    return std::nullopt;
+}
+
 }  // namespace
 
 
@@ -179,7 +189,7 @@ TEST(Startup, SendsACommandInATransferOfItsOwnSize)
     EXPECT_EQ(hat.receiver.commands[0].transferSize, poll.size());
 }
 
-TEST(Startup, LeavesTheBusIdleWhileAValsetIsApplied)
+TEST(Startup, LeavesTheBusIdleWhileTheSpiPortIsReconfigured)
 {
     StartupHarness hat;
     hat.receiver.values[UbxCfgKeys::CFG_SPI_MAXFF] = { 50 };
@@ -187,14 +197,40 @@ TEST(Startup, LeavesTheBusIdleWhileAValsetIsApplied)
 
     EXPECT_TRUE(hat.startup.configure(keys));
 
-    ASSERT_EQ(hat.receiver.commands.size(), 3u);
-    const auto& valset = hat.receiver.commands[1];
-    EXPECT_EQ(valset.frame[3], 0x8A);
-    ASSERT_TRUE(valset.firstReadAt.has_value());
-    EXPECT_GE(*valset.firstReadAt - valset.sentAt,
-        std::chrono::milliseconds(10));
+    const auto idle = idleAfterValset(hat.receiver);
+    ASSERT_TRUE(idle.has_value());
+    EXPECT_GE(*idle, std::chrono::milliseconds(10));
     EXPECT_EQ(hat.receiver.values[UbxCfgKeys::CFG_SPI_MAXFF],
         std::vector<uint8_t>{ 63 });
+}
+
+TEST(Startup, FindsTheSpiSettingBehindOtherSettings)
+{
+    StartupHarness hat;
+    hat.receiver.values[UbxCfgKeys::CFG_RATE_MEAS] = { 0xF4, 0x01 };
+    hat.receiver.values[UbxCfgKeys::CFG_SPI_MAXFF] = { 50 };
+    const std::array keys {
+        UbxCfgKeys::CFG_RATE_MEAS, UbxCfgKeys::CFG_SPI_MAXFF
+    };
+
+    EXPECT_TRUE(hat.startup.configure(keys));
+
+    const auto idle = idleAfterValset(hat.receiver);
+    ASSERT_TRUE(idle.has_value());
+    EXPECT_GE(*idle, std::chrono::milliseconds(10));
+}
+
+TEST(Startup, DoesNotWaitAfterOtherSettings)
+{
+    StartupHarness hat;
+    hat.receiver.values[UbxCfgKeys::CFG_RATE_MEAS] = { 0xF4, 0x01 };
+    const std::array keys { UbxCfgKeys::CFG_RATE_MEAS };
+
+    EXPECT_TRUE(hat.startup.configure(keys));
+
+    const auto idle = idleAfterValset(hat.receiver);
+    ASSERT_TRUE(idle.has_value());
+    EXPECT_LT(*idle, std::chrono::milliseconds(10));
 }
 
 TEST(Startup, StopsWaitingWhenTheReceiverRejectsTheCommand)
