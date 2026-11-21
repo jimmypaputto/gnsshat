@@ -443,3 +443,29 @@ TEST(RunResync, M9NKeepsNavigatingAfterHeaderWithImpossibleLength)
 
     EXPECT_EQ(hat.navigationStore.navigation().pvt.utc.ss, 61);
 }
+
+TEST(RunResync, ParserCarriesFramesCutAtAnyByte)
+{
+    const auto streamSize = navDop().size() + navPvt(0).size();
+
+    for (uint8_t cut = 1; cut < streamSize; cut++)
+    {
+        // The second differs per cut: the store's PVT is not initialised
+        // and would otherwise keep the value of the previous iteration.
+        const auto stream = concat({ navDop(), navPvt(cut) });
+        M9NHarness hat;
+        std::vector<uint8_t> buffer(stream.size());
+        std::memcpy(buffer.data(), stream.data(), cut);
+        const auto offset = UbxParser::moveUnfinishedToFront(
+            hat.parser.parse({ buffer.data(), cut }), buffer
+        );
+        const auto rest = stream.size() - cut;
+        std::memcpy(buffer.data() + offset, stream.data() + cut, rest);
+
+        const auto unfinished = hat.parser.parse({ buffer.data(), offset + rest });
+
+        EXPECT_TRUE(unfinished.empty()) << "cut after byte " << int(cut);
+        EXPECT_EQ(hat.navigationStore.navigation().pvt.utc.ss, cut)
+            << "cut after byte " << int(cut);
+    }
+}

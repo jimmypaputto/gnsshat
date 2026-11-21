@@ -77,7 +77,11 @@ std::span<const uint8_t> UbxParser::extractFrames(
         );
         const auto available = std::distance(frameBegin, buffer.end());
         if (available == 0)
+        {
+            if (searchFrom != buffer.end() && buffer.back() == pattern[0])
+                return { buffer.end() - 1, buffer.end() };
             break;
+        }
 
         if (available < headerSize)
             return { frameBegin, buffer.end() };
