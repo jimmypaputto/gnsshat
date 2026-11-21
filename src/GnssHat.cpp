@@ -6,11 +6,16 @@
 
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <fstream>
+#include <functional>
+#include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <type_traits>
 
+#include "common/ThreadingSignals.hpp"
 #include "ublox/GnssConfig.hpp"
 #include "ublox/NavigationStore.hpp"
 #include "ublox/NmeaForwarder.hpp"
@@ -18,7 +23,6 @@
 #include "ublox/Run.hpp"
 #include "ublox/SpiDriver.hpp"
 #include "ublox/Timepulse.hpp"
-#include "ublox/TimeMarkTrigger.hpp"
 #include "ublox/TxReady.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/Ublox.hpp"
@@ -86,7 +90,8 @@ public:
 
     template<class StartupStrategy, class RunStrategy>
     bool start(const GnssConfig& config);
-    Navigation waitAndGetFreshNavigation() override;
+    std::optional<Navigation> waitAndGetFreshNavigation(
+        std::stop_token stop) override;
     Navigation navigation() const override;
     bool enableTimepulse() override;
     void disableTimepulse() override;
@@ -96,14 +101,15 @@ public:
     std::string getGpsdDevicePath() const override;
     void hardResetUbloxSom_ColdStart() const override;
     void softResetUbloxSom_HotStart() override;
-    void timepulse() override;
+    bool timepulse(std::stop_token stop) override;
 
     std::optional<TimeMark> timeMark() const override;
-    TimeMark waitAndGetFreshTimeMark() override;
+    std::optional<TimeMark> waitAndGetFreshTimeMark(
+        std::stop_token stop) override;
 
-    bool enableTimeMarkTrigger() override;
-    void disableTimeMarkTrigger() override;
-    void triggerTimeMark(ETimeMarkTriggerEdge edge) override;
+    EWaitResult waitForEvent(EHatEvent event,
+        std::chrono::milliseconds timeout) override;
+    void shutdown() override;
 
     SystemHealth systemHealth() const override;
     std::string swVersion() const override
@@ -120,6 +126,25 @@ public:
     }
 
 protected:
+    // Held for the whole of every call that can block, so that destruction
+    // can wait until such calls have left the instance.
+    class BlockingCall
+    {
+    public:
+        explicit BlockingCall(GnssHat& hat);
+        ~BlockingCall();
+        BlockingCall(const BlockingCall&) = delete;
+        BlockingCall& operator=(const BlockingCall&) = delete;
+
+    private:
+        GnssHat& hat_;
+    };
+
+    EWaitResult waitFor(Notifier& notifier, std::chrono::milliseconds timeout);
+    void warnTimepulseNotEnabled() const;
+    // First step of every destructor in the hierarchy, before any member is
+    // destroyed.
+    void shutdownAndWaitForBlockingCalls();
     void stopUbloxThread();
     virtual std::optional<std::reference_wrapper<Rtcm3Store>> rtcm3Store();
 
@@ -132,7 +157,10 @@ protected:
     std::unique_ptr<Ublox> ublox_;
     std::unique_ptr<TxReadyInterrupt> txReady_;
     std::unique_ptr<Timepulse> timepulse_;
-    std::unique_ptr<NmeaForwarder> nmeaForwarder_;
+    // Shared so that joinForwardForGpsd() keeps the forwarder alive while
+    // another thread stops or replaces it.
+    std::shared_ptr<NmeaForwarder> nmeaForwarder_;
+    mutable std::mutex nmeaForwarderMtx_;
     Notifier txReadyNotifier_;
     Notifier timepulseNotifier_;
     Notifier navigationNotifier_;
@@ -142,6 +170,11 @@ protected:
     std::stop_source stopSource_;
     std::jthread ubloxThread_;
     std::atomic<bool> timepulseEnabled_{false};
+
+private:
+    std::mutex blockingCallsMtx_;
+    std::condition_variable blockingCallsCv_;
+    uint32_t blockingCalls_{0};
 };
 
 class GnssL1Hat : public GnssHat
@@ -178,8 +211,7 @@ public:
 
     ~GnssL1L5TimeHat() override
     {
-        disableTimeMarkTrigger();
-        stopSource_.request_stop();
+        shutdownAndWaitForBlockingCalls();
         stopUbloxThread();
         nmeaForwarder_.reset();
     }
@@ -203,68 +235,28 @@ public:
     {
         return navigationStore_.timeMark();
     }
-    TimeMark waitAndGetFreshTimeMark() override
+    std::optional<TimeMark> waitAndGetFreshTimeMark(
+        std::stop_token stop) override
     {
-        timeMarkNotifier_.wait(stopSource_.get_token());
-        return navigationStore_.timeMark().value_or(TimeMark{});
+        BlockingCall call(*this);
+        if (!timeMarkNotifier_.wait(stopSource_.get_token(), stop))
+            return std::nullopt;
+        return navigationStore_.timeMark();
+    }
+    EWaitResult waitForEvent(EHatEvent event,
+        std::chrono::milliseconds timeout) override
+    {
+        if (event != EHatEvent::TimeMark)
+            return GnssHat::waitForEvent(event, timeout);
+
+        BlockingCall call(*this);
+        return waitFor(timeMarkNotifier_, timeout);
     }
 
     SystemHealth systemHealth() const override
     {
         return navigationStore_.systemHealth();
     }
-
-    bool enableTimeMarkTrigger() override
-    {
-        if (timeMarkTriggerEnabled_.load())
-        {
-            fprintf(stderr, "[GNSS] TimeMarkTrigger already enabled\r\n");
-            return true;
-        }
-
-        timeMarkTrigger_ = std::make_unique<TimeMarkTrigger>();
-        timeMarkTriggerEnabled_.store(true);
-        return true;
-    }
-
-    void disableTimeMarkTrigger() override
-    {
-        if (!timeMarkTriggerEnabled_.load())
-            return;
-
-        timeMarkTrigger_.reset();
-        timeMarkTriggerEnabled_.store(false);
-    }
-
-    void triggerTimeMark(ETimeMarkTriggerEdge edge) override
-    {
-        if (!timeMarkTriggerEnabled_.load() || !timeMarkTrigger_)
-        {
-            fprintf(
-                stderr,
-                "[GNSS] TimeMarkTrigger not enabled. "
-                "Call enableTimeMarkTrigger() first.\r\n"
-            );
-            return;
-        }
-
-        switch (edge)
-        {
-            case ETimeMarkTriggerEdge::Rising:
-                timeMarkTrigger_->raise();
-                break;
-            case ETimeMarkTriggerEdge::Falling:
-                timeMarkTrigger_->fall();
-                break;
-            case ETimeMarkTriggerEdge::Toggle:
-                timeMarkTrigger_->toggle();
-                break;
-        }
-    }
-
-private:
-    std::unique_ptr<TimeMarkTrigger> timeMarkTrigger_;
-    std::atomic<bool> timeMarkTriggerEnabled_{false};
 };
 
 class GnssL1L5TRtkHat : public GnssHat
@@ -277,7 +269,7 @@ public:
 
     ~GnssL1L5TRtkHat() override
     {
-        stopSource_.request_stop();
+        shutdownAndWaitForBlockingCalls();
         stopUbloxThread();
         txReady_.reset();
         runStrategy_.reset();
@@ -286,7 +278,10 @@ public:
     bool start(const GnssConfig& config) override
     {
         rtk_ = std::unique_ptr<IRtk>(RtkFactory::create(rtcm3Store_, config));
-        return GnssHat::start<F9PStartup, F9PRun>(config);
+        const bool started = GnssHat::start<F9PStartup, F9PRun>(config);
+        if (!started)
+            rtk_.reset();
+        return started;
     }
 
     std::string_view name() const override
@@ -352,7 +347,7 @@ IGnssHat* IGnssHat::create()
     if (GnssL1L5RtkHatProduct == hatProduct)
         return new GnssL1L5TRtkHat();
 
-    printf("[GNSS] Unknown HAT, FATAL\r\n");
+    fprintf(stderr, "[GNSS] Unknown HAT '%s', FATAL\r\n", hatProduct.c_str());
     std::terminate();
 }
 
@@ -370,7 +365,7 @@ GnssHat::GnssHat(std::unique_ptr<ICommDriver>&& commDriver)
 
 GnssHat::~GnssHat()
 {
-    stopSource_.request_stop();
+    shutdownAndWaitForBlockingCalls();
     stopUbloxThread();
     txReady_.reset();
     timepulse_.reset();
@@ -398,6 +393,24 @@ bool validateConfig(const GnssConfig& config)
                 "use L1/L5 GNSS TIME HAT\r\n"
             );
             return false;
+        }
+
+        if constexpr (std::is_same_v<StartupStrategy, M9NStartup>)
+        {
+            if (config.rtk.has_value())
+            {
+                fprintf(
+                    stderr,
+                    "[GnssConfig] RTK is not supported on this HAT - "
+                    "use L1/L5 GNSS RTK HAT\r\n"
+                );
+                return false;
+            }
+        }
+        else
+        {
+            if (!checkRtk(config.rtk))
+                return false;
         }
 
         return checkGeofencing(config.geofencing);
@@ -431,6 +444,11 @@ bool validateConfig(const GnssConfig& config)
 template<class StartupStrategy, class RunStrategy>
 bool GnssHat::start(const GnssConfig& config)
 {
+    if (stopSource_.stop_requested())
+    {
+        fprintf(stderr, "[GNSS] HAT is shut down; create a new instance\r\n");
+        return false;
+    }
     if (!validateConfig<StartupStrategy>(config))
     {
         fprintf(stderr, "[GNSS] Invalid config\r\n");
@@ -438,6 +456,12 @@ bool GnssHat::start(const GnssConfig& config)
     }
 
     config_ = config;
+    // A line opened before start() listens for the edge of the old polarity.
+    if (timepulseEnabled_.load())
+    {
+        disableTimepulse();
+        enableTimepulse();
+    }
     configRegistry_ = std::make_unique<UbloxConfigRegistry>(config_);
     ubxParser_ = std::make_unique<UbxParser>(
         *configRegistry_, navigationStore_, timeMarkNotifier_
@@ -485,13 +509,21 @@ bool GnssHat::start(const GnssConfig& config)
 
     if constexpr (!std::is_same_v<RunStrategy, F10TRun>)
     {
-        txReady_ = std::make_unique<TxReadyInterrupt>(
-            txReadyNotifier_, config.measurementRate_Hz
-        );
+        try
+        {
+            txReady_ = std::make_unique<TxReadyInterrupt>(
+                txReadyNotifier_, config.measurementRate_Hz
+            );
+        }
+        catch (const std::runtime_error& e)
+        {
+            fprintf(stderr, "[GNSS] TX-READY interrupt: %s\r\n", e.what());
+            return false;
+        }
         txReady_->run();
     }
 
-    ubloxThread_ = std::jthread([this](std::stop_token stoken){
+    ubloxThread_ = createSignalFreeThread([this](std::stop_token stoken){
         while (!stoken.stop_requested())
         {
             ublox_->run(stoken);
@@ -501,10 +533,12 @@ bool GnssHat::start(const GnssConfig& config)
     return true;
 }
 
-Navigation GnssHat::waitAndGetFreshNavigation()
+std::optional<Navigation> GnssHat::waitAndGetFreshNavigation(
+    std::stop_token stop)
 {
-    if (!navigationNotifier_.wait(stopSource_.get_token()))
-        return Navigation();
+    BlockingCall call(*this);
+    if (!navigationNotifier_.wait(stopSource_.get_token(), stop))
+        return std::nullopt;
 
     return navigationStore_.navigation();
 }
@@ -522,7 +556,16 @@ bool GnssHat::enableTimepulse()
         return true;
     }
 
-    timepulse_ = std::make_unique<Timepulse>(timepulseNotifier_);
+    try
+    {
+        timepulse_ = std::make_unique<Timepulse>(
+            timepulseNotifier_, config_.timepulsePinConfig.polarity
+        );
+    }
+    catch (const std::runtime_error&)
+    {
+        return false;
+    }
     timepulse_->run();
     timepulseEnabled_.store(true);
     return true;
@@ -533,8 +576,8 @@ void GnssHat::disableTimepulse()
     if (!timepulseEnabled_.load())
         return;
 
-    timepulse_.reset();
     timepulseEnabled_.store(false);
+    timepulse_.reset();
 }
 
 void GnssHat::hardResetUbloxSom_ColdStart() const
@@ -556,17 +599,23 @@ void GnssHat::softResetUbloxSom_HotStart()
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 }
 
-void GnssHat::timepulse()
+void GnssHat::warnTimepulseNotEnabled() const
 {
-    if (!timepulseEnabled_.load() || !timepulse_)
+    fprintf(
+        stderr,
+        "[GNSS] Timepulse not enabled. Call enableTimepulse() first.\r\n"
+    );
+}
+
+bool GnssHat::timepulse(std::stop_token stop)
+{
+    BlockingCall call(*this);
+    if (!timepulseEnabled_.load())
     {
-        fprintf(
-            stderr,
-            "[GNSS] Timepulse not enabled. Call enableTimepulse() first.\r\n"
-        );
-        return;
+        warnTimepulseNotEnabled();
+        return false;
     }
-    timepulseNotifier_.wait();
+    return timepulseNotifier_.wait(stopSource_.get_token(), stop);
 }
 
 std::optional<TimeMark> GnssHat::timeMark() const
@@ -587,45 +636,31 @@ SystemHealth GnssHat::systemHealth() const
     return SystemHealth{};
 }
 
-TimeMark GnssHat::waitAndGetFreshTimeMark()
+std::optional<TimeMark> GnssHat::waitAndGetFreshTimeMark(std::stop_token)
 {
     fprintf(stderr,
         "[GNSS] TimeMark is not supported on %.*s. "
         "Use L1/L5 GNSS TIME HAT.\r\n",
         static_cast<int>(name().size()), name().data());
-    return {};
-}
-
-bool GnssHat::enableTimeMarkTrigger()
-{
-    fprintf(stderr,
-        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
-        "Use L1/L5 GNSS TIME HAT.\r\n",
-        static_cast<int>(name().size()), name().data());
-    return false;
-}
-
-void GnssHat::disableTimeMarkTrigger()
-{
-}
-
-void GnssHat::triggerTimeMark(ETimeMarkTriggerEdge)
-{
-    fprintf(stderr,
-        "[GNSS] TimeMarkTrigger is not supported on %.*s. "
-        "Use L1/L5 GNSS TIME HAT.\r\n",
-        static_cast<int>(name().size()), name().data());
+    return std::nullopt;
 }
 
 bool GnssHat::startForwardForGpsd()
 {
+    std::lock_guard lock(nmeaForwarderMtx_);
+    if (stopSource_.stop_requested())
+    {
+        fprintf(stderr, "[GNSS] HAT is shutting down, not forwarding\r\n");
+        return false;
+    }
+
     if (nmeaForwarder_ && nmeaForwarder_->isRunning())
     {
         fprintf(stderr, "[GNSS] NMEA forwarding already active\r\n");
         return true;
     }
 
-    nmeaForwarder_ = std::make_unique<NmeaForwarder>();
+    nmeaForwarder_ = std::make_shared<NmeaForwarder>();
 
     if (!nmeaForwarder_->createVirtualTty())
     {
@@ -640,25 +675,100 @@ bool GnssHat::startForwardForGpsd()
 
 void GnssHat::stopForwardForGpsd()
 {
+    std::lock_guard lock(nmeaForwarderMtx_);
     if (nmeaForwarder_)
         nmeaForwarder_->stopForwarding();
 }
 
 void GnssHat::joinForwardForGpsd()
 {
-    if (!nmeaForwarder_)
+    BlockingCall call(*this);
+    std::shared_ptr<NmeaForwarder> forwarder;
+    {
+        std::lock_guard lock(nmeaForwarderMtx_);
+        forwarder = nmeaForwarder_;
+    }
+    if (!forwarder)
         return;
 
-    nmeaForwarder_->joinForwarding();
-    nmeaForwarder_.reset();
-    printf("[GNSS] GPSD forwarding stopped\n");
+    forwarder->joinForwarding();
+
+    std::lock_guard lock(nmeaForwarderMtx_);
+    if (nmeaForwarder_ == forwarder)
+    {
+        nmeaForwarder_.reset();
+        printf("[GNSS] GPSD forwarding stopped\n");
+    }
 }
 
 std::string GnssHat::getGpsdDevicePath() const
 {
+    std::lock_guard lock(nmeaForwarderMtx_);
     if (nmeaForwarder_ && nmeaForwarder_->isRunning())
         return nmeaForwarder_->getDevicePath();
     return "";
+}
+
+EWaitResult GnssHat::waitFor(Notifier& notifier,
+    std::chrono::milliseconds timeout)
+{
+    switch (notifier.waitFor(stopSource_.get_token(), timeout))
+    {
+        case Notifier::EWaitFor::Notified: return EWaitResult::Ready;
+        case Notifier::EWaitFor::TimedOut: return EWaitResult::Timeout;
+        case Notifier::EWaitFor::Stopped:  return EWaitResult::Stopped;
+    }
+    return EWaitResult::Stopped;
+}
+
+EWaitResult GnssHat::waitForEvent(EHatEvent event,
+    std::chrono::milliseconds timeout)
+{
+    BlockingCall call(*this);
+    switch (event)
+    {
+        case EHatEvent::Navigation:
+            return waitFor(navigationNotifier_, timeout);
+        case EHatEvent::Timepulse:
+            if (!timepulseEnabled_.load())
+            {
+                warnTimepulseNotEnabled();
+                return EWaitResult::Stopped;
+            }
+            return waitFor(timepulseNotifier_, timeout);
+        case EHatEvent::TimeMark:
+            // Only the TIME HAT has a time mark input; this reports that.
+            waitAndGetFreshTimeMark({});
+            return EWaitResult::Stopped;
+    }
+    return EWaitResult::Stopped;
+}
+
+void GnssHat::shutdown()
+{
+    stopSource_.request_stop();
+    stopForwardForGpsd();
+}
+
+void GnssHat::shutdownAndWaitForBlockingCalls()
+{
+    shutdown();
+    std::unique_lock lock(blockingCallsMtx_);
+    blockingCallsCv_.wait(lock, [this] { return blockingCalls_ == 0; });
+}
+
+GnssHat::BlockingCall::BlockingCall(GnssHat& hat)
+:   hat_(hat)
+{
+    std::lock_guard lock(hat_.blockingCallsMtx_);
+    ++hat_.blockingCalls_;
+}
+
+GnssHat::BlockingCall::~BlockingCall()
+{
+    std::lock_guard lock(hat_.blockingCallsMtx_);
+    if (--hat_.blockingCalls_ == 0)
+        hat_.blockingCallsCv_.notify_all();
 }
 
 void GnssHat::stopUbloxThread()

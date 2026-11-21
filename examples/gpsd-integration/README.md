@@ -3,14 +3,14 @@
 Two ways to forward GNSS data to gpsd:
 
 1. **`jpgnss2gpsd-bridge`** — standalone systemd daemon, runs in background
-2. **`GpsdInteractive`** — example for embed NMEA forwarding in your own application
+2. **`gpsd-interactive`** — example of embedding NMEA forwarding in your own application
 
 Both create `/dev/jimmypaputto/gnss` virtual serial port that gpsd reads.
 
 > **Prerequisite:** both binaries link against `libgnsshat`, so the main project must be
 > built **and installed** first (`sudo make install`) - see
 > [Installation](../../README.md#installation) in the main README. Without it `cmake ..`
-> fails with `Could not find a package configuration file provided by "GnssHat"` and
+> fails with `Could not find a package configuration file provided by "gnsshat"` and
 > `make` fails with `jimmypaputto/GnssHat.hpp: No such file or directory`.
 
 L1 GNSS HAT and L1/L5 RTK HAT use SPI — gpsd can't read SPI directly. The bridge reads NMEA from the HAT and exposes it as a virtual serial device that gpsd understands.
@@ -19,27 +19,36 @@ The L1/L5 TIME HAT uses UART (`/dev/ttyAMA0`) so gpsd can talk to it directly. T
 
 > **USB shortcut (L1 HAT & RTK HAT only):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to your Raspberry Pi (or any host) and the module appears as `/dev/ttyACM0` (CDC-ACM serial device). gpsd can read this device directly - no bridge daemon and no library needed. See **Option C** below.
 
-## Embedded forwarding (GpsdInteractive)
+## Embedded forwarding (gpsd-interactive)
 
-`GpsdInteractive` is an example — adapt the same mechanism in your own code. Your application can forward NMEA to gpsd while doing its own work at the same time. The forwarding runs in a background thread — no collisions with navigation reads.
+`gpsd-interactive` (source: [src/GpsdInteractive.cpp](src/GpsdInteractive.cpp)) is an example — adapt the same mechanism in your own code. Your application can forward NMEA to gpsd while doing its own work at the same time. The forwarding runs in a background thread — no collisions with navigation reads.
 
 ```cpp
-auto* ubxHat = IGnssHat::create();
+std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
 ubxHat->start(config);
 
 // Start NMEA forwarding in background
 ubxHat->startForwardForGpsd();
 printf("gpsd device: %s\n", ubxHat->getGpsdDevicePath().c_str());
 
+// Blocks SIGINT/SIGTERM in main and starts a thread that takes them with
+// sigwait() and calls ubxHat->shutdown() (see GpsdInteractive.cpp)
+auto signalsInterrupt = signalsHandler(*ubxHat);
+
 // Your app keeps running — navigation and gpsd work simultaneously
-while (running)
+while (const auto nav = ubxHat->waitAndGetFreshNavigation())
 {
-    auto nav = ubxHat->waitAndGetFreshNavigation();
-    // use nav...
+    // use *nav...
 }
 
-ubxHat->stopForwardForGpsd();
+// Ctrl+C ends the loop
+signalsInterrupt.join();
+// the destructor stops the forwarder
 ```
+
+The library never handles signals itself, so the example owns Ctrl+C and
+`systemctl stop`. `shutdown()` is thread-safe but not async-signal-safe, which is
+why it runs in the `sigwait()` thread and not in a signal handler.
 
 Build and run:
 
@@ -61,7 +70,17 @@ Key API calls:
 - `startForwardForGpsd()` — creates virtual serial port, starts NMEA thread
 - `getGpsdDevicePath()` — returns path to virtual device (`/dev/jimmypaputto/gnss`)
 - `stopForwardForGpsd()` — stops forwarding, removes virtual device
-- `joinForwardForGpsd()` — blocks until forwarding is stopped
+- `shutdown()` — stops all waits and forwarding for good; the daemon calls it
+  from its `sigwait()` thread on Ctrl+C / SIGTERM
+- `joinForwardForGpsd()` — blocks until forwarding is stopped: by
+  `stopForwardForGpsd()`, by `shutdown()`, or by destroying the HAT. Cleanup
+  does not need it — the destructor stops the forwarder and removes the
+  virtual device
+
+Use only one joiner at a time per HAT. Another thread may stop forwarding or
+read the device path while the join is waiting. The join itself does not stop
+forwarding; calling it again after it has returned is harmless unless
+forwarding has been restarted.
 
 ## Daemon (jpgnss2gpsd-bridge)
 
@@ -75,7 +94,7 @@ The daemon:
 - Auto-detects HAT type via `/proc/device-tree/hat/product`
 - Starts the GNSS module with 1 Hz measurement rate
 - Creates `/dev/jimmypaputto/gnss` virtual serial port (9600 baud, 8N1)
-- Forwards NMEA sentences (GGA, RMC, GSA) at 1 Hz
+- Forwards NMEA sentences (GGA, RMC, GSA, GSV, GST, ZDA) at 1 Hz
 - Runs as systemd service, restarts on failure
 
 ## Build

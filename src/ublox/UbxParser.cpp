@@ -7,13 +7,12 @@
 #include <algorithm>
 
 #include "EUbxMsg.hpp"
+#include "UbxClassMsgId.hpp"
 #include "UbxFactory.hpp"
 #include "Ublox.hpp"
 
 #include "ubxmsg/UBX_ACK_ACK.hpp"
 #include "ubxmsg/UBX_ACK_NAK.hpp"
-#include "ubxmsg/UBX_CFG_MSG.hpp"
-#include "ubxmsg/UBX_CFG_PRT.hpp"
 #include "ubxmsg/UBX_NAV_DOP.hpp"
 #include "ubxmsg/UBX_NAV_PVT.hpp"
 
@@ -50,9 +49,9 @@ std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
         const auto eUbxMsg = UbxClassMsgId::translate(
             { frame[2], frame[3] }
         );
-        if (eUbxMsg != EUbxMsg::END_UBX)
+        if (auto* ubxMsg = ubxFactory_.create(eUbxMsg, frame))
         {
-            ubxCallbacks_.run(ubxFactory_.create(eUbxMsg, frame), eUbxMsg);
+            ubxCallbacks_.run(*ubxMsg, eUbxMsg);
         }
     }
     return unfinishedFrameFromBuffer_;

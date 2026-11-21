@@ -2,6 +2,12 @@
 
 This directory contains Python examples demonstrating how to use the GNSS HAT library.
 
+Every example stops on Ctrl+C: it raises `KeyboardInterrupt`, also while
+`wait_and_get_fresh_*()` or `timepulse()` is blocking, and leaving the `with`
+block then releases the HAT. SIGTERM keeps Python's default and ends the process
+at once; [Ctrl+C and signals](../../python/README.md#ctrlc-and-signals) shows
+how a service makes it behave like Ctrl+C.
+
 ## Prerequisites
 
 Make sure the Python module is installed:
@@ -93,13 +99,13 @@ RTK Rover example with NTRIP client demonstrating:
 - Connecting to an NTRIP caster to receive RTCM3 corrections over the internet
 - Applying RTCM3 corrections to the GNSS receiver for centimeter-level accuracy
 - Real-time monitoring of RTK fix quality
-- Batched correction application with per-frame RTCM3 message identification
+- Applying the frames received since the last epoch once per navigation epoch, without an extra thread
 - Uses native `gnsshat.NtripClient` for NTRIP communication
 
-Edit the configuration constants at the top of the script to set your NTRIP caster credentials (caster_ip, port, mountpoint, username, password).
+Pass the NTRIP caster connection on the command line: `--host` (default `localhost`), `--port` (default `2101`), `--mountpoint` (default `GNSS_HAT`), `--user` and `--password` (default empty).
 
 ```bash
-python rtk_rover.py
+python rtk_rover.py --host <HOST> --port 2101 --mountpoint <MOUNT> --user <USER> --password <PWD>
 ```
 
 ### 9. print_satellites.py
@@ -117,10 +123,8 @@ python print_satellites.py
 ### 10. time_mark.py
 TimeMark example demonstrating:
 - Configuring the GNSS HAT with TimeMark enabled
-- Enabling the TimeMark trigger on the EXTINT pin
-- Toggling the EXTINT pin periodically to generate time mark events
-- Reading time mark data (TIM-TM2) with precise timestamps
-- Multi-threaded operation: trigger thread + reader thread
+- Reading time mark data (TIM-TM2) with precise timestamps for edges on the
+  HAT's external TimeMark input
 
 **Requires:** L1/L5 GNSS TIME HAT (NEO-F10T)
 
@@ -149,13 +153,4 @@ Edit the command-line arguments to set your NTRIP caster credentials.
 
 ```bash
 python ntrip_server.py --caster-host <HOST> --caster-port 2101 --mountpoint <MOUNT> --password <PWD>
-```
-
-### 13. benchmark_25hz.py
-25 Hz measurement rate benchmark:
-- Measures frames/s received via `wait_and_get_fresh_navigation()` at 25 Hz
-- Outputs one ISO 8601 UTC time per line for post-processing
-
-```bash
-sudo python3 benchmark_25hz.py > /tmp/bench_py.csv
 ```

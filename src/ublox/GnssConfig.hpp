@@ -69,6 +69,7 @@ bool checkMeasurementRate(const uint16_t measurementRate);
 bool checkTimepulsePinConfig(const TimepulsePinConfig& timepulsePinConfig);
 bool checkGeofencing(const std::optional<GnssConfig::Geofencing>& geofencing);
 bool checkTiming(const std::optional<TimingConfig>& timing);
+bool checkRtk(const std::optional<RtkConfig>& rtk);
 bool checkNavigationFilters(
     const std::optional<GnssConfig::NavigationFilters>& filters);
 

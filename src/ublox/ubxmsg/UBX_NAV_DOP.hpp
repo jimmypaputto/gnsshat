@@ -18,18 +18,16 @@ class UBX_NAV_DOP: public IUbxMsg
 public:
     explicit UBX_NAV_DOP() = default;
 
-    explicit UBX_NAV_DOP(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return { };
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
+        if (payloadLength(serialized) < 18)
+            return false;
+
         dop_.geometric = readLE<uint16_t>(serialized, 10) * 0.01;
         dop_.position = readLE<uint16_t>(serialized, 12) * 0.01;
         dop_.time = readLE<uint16_t>(serialized, 14) * 0.01;
@@ -37,6 +35,7 @@ public:
         dop_.horizontal = readLE<uint16_t>(serialized, 18) * 0.01;
         dop_.northing = readLE<uint16_t>(serialized, 20) * 0.01;
         dop_.easting = readLE<uint16_t>(serialized, 22) * 0.01;
+        return true;
     }
 
     DilutionOverPrecision dop() const

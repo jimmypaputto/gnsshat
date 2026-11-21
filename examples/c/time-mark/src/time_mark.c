@@ -4,25 +4,12 @@
 
 #include <pthread.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <unistd.h>
 
 #include <jimmypaputto/GnssHat.h>
 
-
-static atomic_bool running = true;
-
-void signal_handler(int sig)
-{
-    if (sig == SIGINT)
-    {
-        printf("\n\nReceived SIGINT, shutting down gracefully...\n");
-        atomic_store(&running, false);
-    }
-}
 
 void print_time_mark(const jp_gnss_time_mark_t* tm)
 {
@@ -69,46 +56,33 @@ jp_gnss_gnss_config_t create_config(void)
     return config;
 }
 
-void* toggle_thread_func(void* arg)
+static sigset_t signals;  /* SIGINT and SIGTERM */
+
+static void* wait_for_signal(void* gnss)
 {
-    jp_gnss_hat_t* gnss = (jp_gnss_hat_t*)arg;
-
-    while (atomic_load(&running))
-    {
-        jp_gnss_hat_trigger_time_mark(gnss,
-            JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE);
-        printf("[EXTINT] toggled\r\n");
-
-        for (int i = 0; i < 50 && atomic_load(&running); ++i)
-            usleep(100000);
-    }
-
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(gnss);
     return NULL;
 }
 
-void* time_mark_thread_func(void* arg)
+/* SIGINT and SIGTERM make the new thread call jp_gnss_hat_shutdown(), which
+ * ends the waits in main. */
+static bool signals_handler(jp_gnss_hat_t* gnss, pthread_t* thread)
 {
-    jp_gnss_hat_t* gnss = (jp_gnss_hat_t*)arg;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
 
-    while (atomic_load(&running))
-    {
-        jp_gnss_time_mark_t tm;
-        if (!jp_gnss_hat_wait_and_get_fresh_time_mark(gnss, &tm))
-            continue;
+    /* Blocks the signals in the calling thread (main); the new thread
+     * inherits the mask. Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
 
-        if (!atomic_load(&running))
-            return NULL;
-
-        print_time_mark(&tm);
-    }
-
-    return NULL;
+    return pthread_create(thread, NULL, wait_for_signal, gnss) == 0;
 }
 
 int main(void)
 {
-    signal(SIGINT, signal_handler);
-
     jp_gnss_hat_t* gnss = jp_gnss_hat_create();
     if (!gnss)
     {
@@ -126,29 +100,23 @@ int main(void)
         return -1;
     }
     printf("Startup done, ublox configured\r\n");
+    printf("Waiting for edges on the HAT's external EXTINT input\r\n\r\n");
 
-    if (!jp_gnss_hat_enable_time_mark_trigger(gnss))
+    pthread_t signals_interrupt;
+    if (!signals_handler(gnss, &signals_interrupt))
     {
-        printf("Failed to enable TimeMark trigger\r\n");
+        printf("Failed to start the signal thread\r\n");
         jp_gnss_hat_destroy(gnss);
         return -1;
     }
-    printf("TimeMark trigger enabled, toggling EXTINT every 5s\r\n\r\n");
 
-    pthread_t toggle_tid;
-    pthread_t time_mark_tid;
-    pthread_create(&toggle_tid, NULL, toggle_thread_func, gnss);
-    pthread_create(&time_mark_tid, NULL, time_mark_thread_func, gnss);
+    jp_gnss_time_mark_t tm;
+    while (jp_gnss_hat_wait_and_get_fresh_time_mark(gnss, &tm))
+        print_time_mark(&tm);
 
-    while (atomic_load(&running))
-        usleep(100000);
-
-    jp_gnss_hat_disable_time_mark_trigger(gnss);
+    pthread_join(signals_interrupt, NULL);
     jp_gnss_hat_destroy(gnss);
 
     printf("Exiting...\r\n");
-    pthread_join(toggle_tid, NULL);
-    pthread_join(time_mark_tid, NULL);
-
     return 0;
 }

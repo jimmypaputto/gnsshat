@@ -19,18 +19,16 @@ class UBX_TIM_TM2: public IUbxMsg
 public:
     explicit UBX_TIM_TM2() = default;
 
-    explicit UBX_TIM_TM2(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return {};
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
+        if (payloadLength(serialized) < 28)
+            return false;
+
         timeMark_.channel = serialized[6];
 
         const uint8_t flags = serialized[7];
@@ -50,6 +48,7 @@ public:
         timeMark_.towFalling_ms = readLE<uint32_t>(serialized, 22);
         timeMark_.towSubFalling_ns = readLE<uint32_t>(serialized, 26);
         timeMark_.accuracyEstimate_ns = readLE<uint32_t>(serialized, 30);
+        return true;
     }
 
     TimeMark timeMark() const

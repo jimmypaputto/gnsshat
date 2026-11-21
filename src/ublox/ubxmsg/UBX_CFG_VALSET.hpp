@@ -7,7 +7,6 @@
 
 #include <vector>
 #include <cstdint>
-#include <stdexcept>
 
 #include "IUbxMsg.hpp"
 #include "ublox/EUbxMemoryLayer.hpp"
@@ -47,14 +46,6 @@ public:
         layer_(layer),
         cfgData_(cfgData)
     {}
-
-    /**
-     * Constructor for deserializing received message
-     */
-    explicit UBX_CFG_VALSET(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
 
     /**
      * Create a VALSET message for setting a single uint8_t value
@@ -111,49 +102,10 @@ public:
         return buildFrame(frame);
     }
 
-    void deserialize(std::span<const uint8_t> frame) override
+    // Input-only: the receiver never sends this message.
+    bool deserialize(std::span<const uint8_t>) override
     {
-        if (frame.size() < 10) {
-            throw std::runtime_error("Invalid frame size for UBX_CFG_VALSET");
-        }
-
-        // Parse from offset 6 (after UBX header and length)
-        version_ = frame[6];
-        layer_ = static_cast<EUbxMemoryLayer>(frame[7]);
-        // frame[8] and frame[9] are reserved
-        
-        cfgData_.clear();
-        
-        // Parse configuration data starting from offset 10
-        size_t offset = 10;
-        while (offset + 4 < frame.size()) {
-            // Read key (4 bytes, little-endian)
-            uint32_t key = static_cast<uint32_t>(
-                frame[offset] | 
-                (frame[offset + 1] << 8) | 
-                (frame[offset + 2] << 16) | 
-                (frame[offset + 3] << 24)
-            );
-            offset += 4;
-            
-            // For simplification, assume 4-byte values (most common)
-            // In real implementation, value size would be determined by key type
-            std::vector<uint8_t> value;
-            size_t remainingBytes = frame.size() - offset;
-            if (remainingBytes >= 4) {
-                // Assume 4-byte value for now
-                value = {frame[offset], frame[offset+1], frame[offset+2], frame[offset+3]};
-                offset += 4;
-            } else if (remainingBytes > 0) {
-                // Take remaining bytes
-                value.assign(frame.begin() + offset, frame.end());
-                offset = frame.size();
-            }
-            
-            if (!value.empty()) {
-                cfgData_.push_back({key, value});
-            }
-        }
+        return false;
     }
 
     // Getters

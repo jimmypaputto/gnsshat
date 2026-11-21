@@ -29,7 +29,7 @@ The library auto-detects the HAT variant via `/proc/device-tree/hat/product`.
 | HAT | u-blox Module | Interface | USB | RTK | Time Base | Time Mark | Geofencing |
 |-----|---------------|-----------|-----|-----|-----------|-----------|------------|
 | L1 GNSS HAT | NEO-M9N | SPI | Yes | -- | -- | -- | Up to 4 zones |
-| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | -- | Survey-In / Fixed Position | EXTINT GPIO 17 | -- |
+| L1/L5 GNSS TIME HAT | NEO-F10T | UART | -- | -- | Survey-In / Fixed Position | External EXTINT input | -- |
 | L1/L5 GNSS RTK HAT | NEO-F9P | SPI + UART | Yes | Base & Rover | -- | -- | Up to 4 zones |
 
 ## Installation
@@ -82,6 +82,36 @@ sudo make install
 
 All flags are optional.
 
+### Using gnsshat from CMake
+
+**Installed library.** `sudo make install` installs a CMake package and a pkg-config file, both named `gnsshat`:
+
+```cmake
+find_package(gnsshat CONFIG REQUIRED)
+target_link_libraries(app PRIVATE gnsshat::gnsshat)
+```
+
+```sh
+g++ -std=c++20 app.cpp $(pkg-config --cflags --libs gnsshat)
+```
+
+Include the headers as `<jimmypaputto/GnssHat.hpp>` (C++20) or `<jimmypaputto/GnssHat.h>` (C). The package version uses `SameMajorVersion` compatibility: `find_package(gnsshat X.Y CONFIG REQUIRED)` accepts any later release with the same major version.
+
+**Subproject.** With `add_subdirectory()` or `FetchContent`, link the plain `gnsshat` target. gnsshat then disables its install rules, pkg-config file and `uninstall` target. Pin a release tag rather than a branch:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(gnsshat
+    GIT_REPOSITORY https://github.com/jimmypaputto/gnsshat.git
+    GIT_TAG        vX.Y.Z  # a release tag
+)
+FetchContent_MakeAvailable(gnsshat)
+
+target_link_libraries(app PRIVATE gnsshat)
+```
+
+The build tree provides the installed `jimmypaputto/` include layout, so `#include <jimmypaputto/...>` works without installing gnsshat. Releases up to `v1.2.0` do not have this yet: there the headers resolve only with `BUILD_EXAMPLES=ON` or, silently, from a system-wide install.
+
 ### Build/First run troubleshooting
 
 ```sh
@@ -91,29 +121,50 @@ All flags are optional.
 It likely means that UART on the rpi is disabled/busy or configured differently. You might want to enable it for development use via raspi-config if you're using hat that requires it.
 
 ```sh
-/home/pi/GnssHat/src/common/GpioInterruptLine.cpp:160:9: error: ‘gpiod_edge_event_buffer_free’ was not declared in this scope; did you mean ‘gpiod_edge_event_buffer’?
+src/common/GpioInterruptLine.cpp:162:9: error: ‘gpiod_edge_event_buffer_free’ was not declared in this scope; did you mean ‘gpiod_edge_event_buffer’?
 ```
-That is due to the wrong version of libgpiod specified in the CMakeLists.txt. Set the version to 1 or 2, depending on your setup:
+The library was compiled for a different libgpiod API (v1 or v2) than the installed `libgpiod-dev`. CMake detects the version on its own (it looks for the v2-only `gpiod_line_settings_new()` and prints `Using libgpiod v1 API` or `Using libgpiod v2 API`), but stores the result in `CMakeCache.txt`. After installing or switching `libgpiod-dev`, delete the build directory and configure again:
 ```sh
-set(LIBGPIOD_VERSION 1)
-or
-set(LIBGPIOD_VERSION 2)
+rm -rf build && mkdir build && cd build
+cmake .. # plus your -D flags
 ```
-For most recent rpi images that would be version 2.
+Passing `-DLIBGPIOD_VERSION=1` or `=2` has no effect.
 
 ## Quick Start
 
 ### C++
 
 ```cpp
+#include <csignal>
 #include <cstdio>
+#include <memory>
+#include <thread>
 #include <jimmypaputto/GnssHat.hpp>
 
 using namespace JimmyPaputto;
 
+// Ctrl+C / SIGTERM call hat.shutdown(), which ends the wait loop in main.
+std::thread signalsHandler(IGnssHat& hat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in main; the new thread inherits the mask.
+    // Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&hat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        hat.shutdown();
+    });
+}
+
 auto main() -> int
 {
-    auto* hat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> hat(IGnssHat::create());
     hat->softResetUbloxSom_HotStart();
 
     GnssConfig config {
@@ -136,13 +187,17 @@ auto main() -> int
         return -1;
     }
 
-    while (true)
+    auto signalsInterrupt = signalsHandler(*hat);
+
+    while (const auto nav = hat->waitAndGetFreshNavigation())
     {
-        const auto nav = hat->waitAndGetFreshNavigation();
         printf("%.6f, %.6f  alt=%.1fm  sats=%d\n",
-            nav.pvt.latitude, nav.pvt.longitude,
-            nav.pvt.altitude, nav.pvt.visibleSatellites);
+            nav->pvt.latitude, nav->pvt.longitude,
+            nav->pvt.altitude, nav->pvt.visibleSatellites);
     }
+
+    signalsInterrupt.join();
+    return 0;  // the destructor stops and releases everything
 }
 ```
 
@@ -150,9 +205,6 @@ auto main() -> int
 
 ```python
 from jimmypaputto import gnsshat
-
-hat = gnsshat.GnssHat()
-hat.soft_reset_hot_start()
 
 config = {
     'measurement_rate_hz': 1,
@@ -165,20 +217,37 @@ config = {
     'geofencing': None
 }
 
-if not hat.start(config):
-    print("Failed to start GNSS")
-    exit(1)
+try:
+    with gnsshat.GnssHat() as hat:
+        hat.soft_reset_hot_start()
+        if not hat.start(config):
+            print("Failed to start GNSS")
+            exit(1)
 
-while True:
-    nav = hat.wait_and_get_fresh_navigation()
-    print(nav)
+        while (nav := hat.wait_and_get_fresh_navigation()) is not None:
+            print(nav)
+except KeyboardInterrupt:
+    print("Exiting...")
 ```
 
 ### C
 
 ```c
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <jimmypaputto/GnssHat.h>
+
+static sigset_t signals;  /* SIGINT and SIGTERM */
+
+/* Ctrl+C / SIGTERM call jp_gnss_hat_shutdown(), which ends the loop in main. */
+static void* signals_handler(void* hat)
+{
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(hat);
+    return NULL;
+}
 
 int main(void)
 {
@@ -201,6 +270,15 @@ int main(void)
         return -1;
     }
 
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+    /* Blocks the signals in main; the new thread inherits the mask.
+     * Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+    pthread_t signals_interrupt;
+    pthread_create(&signals_interrupt, NULL, signals_handler, hat);
+
     jp_gnss_navigation_t nav;
     while (jp_gnss_hat_wait_and_get_fresh_navigation(hat, &nav))
     {
@@ -209,6 +287,7 @@ int main(void)
             nav.pvt.altitude, nav.pvt.visible_satellites);
     }
 
+    pthread_join(signals_interrupt, NULL);
     jp_gnss_hat_destroy(hat);
     return 0;
 }
@@ -222,23 +301,46 @@ Include `<jimmypaputto/GnssHat.hpp>`, namespace `JimmyPaputto`.
 
 | Method | Description |
 |--------|-------------|
-| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation |
+| `IGnssHat::create()` | Factory -- detects HAT and returns the right implementation; terminates the process on an unknown HAT (check `Hat::detectProduct()` first) |
 | `start(config)` | Configure the u-blox module and start data acquisition |
 | `name()` | HAT name (e.g. `"L1 GNSS HAT"`) |
-| `waitAndGetFreshNavigation()` | Block until new data arrives, return `Navigation` |
+| `waitAndGetFreshNavigation(stop = {})` | Block until new data arrives; `std::nullopt` once the wait is stopped (see below) |
 | `navigation()` | Return last known `Navigation` immediately |
 | `softResetUbloxSom_HotStart()` | Soft reset (keeps ephemeris/almanac) |
 | `hardResetUbloxSom_ColdStart()` | Full cold reset (clears stored data) |
 | `rtk()` | RTK interface (`IRtk*`, non-null only on RTK HAT) |
 | `enableTimepulse()` / `disableTimepulse()` | Enable/disable timepulse GPIO (pin 5) |
-| `timepulse()` | Block until next timepulse |
+| `timepulse(stop = {})` | Block until next timepulse; `false` when not enabled or stopped |
 | `timeMark()` | Return last `TimeMark` or `std::nullopt` (non-blocking) |
-| `waitAndGetFreshTimeMark()` | Block until new TimeMark event arrives |
-| `enableTimeMarkTrigger()` / `disableTimeMarkTrigger()` | Enable/disable EXTINT trigger on GPIO 17 |
-| `triggerTimeMark(edge)` | Manually toggle/raise/lower EXTINT pin |
+| `waitAndGetFreshTimeMark(stop = {})` | Block until new TimeMark event arrives; `std::nullopt` without a time mark input or once stopped |
 | `startForwardForGpsd()` / `stopForwardForGpsd()` | NMEA forwarding to virtual serial port for gpsd |
-| `joinForwardForGpsd()` | Block until forwarder thread finishes |
-| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config) |
+| `joinForwardForGpsd()` | Block until forwarding is stopped (`stopForwardForGpsd()`, `shutdown()`, destruction) |
+| `getGpsdDevicePath()` | Virtual serial port path (for gpsd config), empty while forwarding is off |
+| `waitForEvent(event, timeout)` | Block until the next `EHatEvent` for at most `timeout`; `EWaitResult` says `Ready`, `Timeout` or `Stopped`. For code with work to do between waits; read the data with `navigation()` / `timeMark()` |
+| `shutdown()` | Stop every wait and gpsd forwarding of this instance for good; thread-safe, not async-signal-safe |
+
+A wait is stopped in three ways, and a loop on it then ends:
+
+- **`shutdown()`** — for the whole program: ends every wait and `joinForwardForGpsd()` of the instance for good, so all loops on it end, and `start()` fails from then on (create a new instance to start again). It releases nothing: join the threads that use the HAT, then delete it. Thread-safe, but not async-signal-safe: call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler.
+- **`std::stop_token`** — for worker threads: pass the token of a `std::jthread`, so that destroying or stopping the thread ends its wait. It ends only that wait, so the instance can be used again (e.g. ROS 2 lifecycle deactivate/activate).
+- **Destruction** — deleting an `IGnssHat` stops all waits and `joinForwardForGpsd()` and waits until the blocked calls have returned. No thread may start a new call once deletion has begun.
+
+```cpp
+std::unique_ptr<IGnssHat> hat(IGnssHat::create());
+hat->start(config);
+std::jthread worker([&hat](std::stop_token stop) {
+    while (const auto nav = hat->waitAndGetFreshNavigation(stop))
+        publish(*nav);
+});
+// declared after `hat`: the worker is stopped and joined first
+```
+
+The library never installs signal handlers and never uses signals internally. Its internal threads block all asynchronous signals, so signals are delivered only to application threads. `shutdown()` is thread-safe; call it from a normal thread (e.g. one waiting in `sigwait()`), not from a signal handler. The C and C++ examples show the pattern: `main` blocks SIGINT and SIGTERM before starting any thread, a dedicated thread takes them with `sigwait()` and calls `shutdown()`, and `main` keeps waiting for data until the waits return `std::nullopt` / `false`. In Python none of this is needed: signal handlers run during the waits, so Ctrl+C simply raises `KeyboardInterrupt` (see [python/README.md](python/README.md#ctrlc-and-signals)).
+
+Only one thread may call `joinForwardForGpsd()` at a time on a given instance
+(the same rule applies to C and Python). Another thread may stop forwarding or
+read its device path while the join is waiting. A join does not request a stop;
+repeated joins without restarting forwarding return immediately.
 
 Utility functions in `JimmyPaputto::Utils`: `eFixQuality2string()`, `jammingState2string()`, `utcTimeFromGnss_ISO8601()`, etc.
 
@@ -338,9 +440,9 @@ See the TimeBase examples in `examples/cpp/time-base/`, `examples/c/time-base/` 
 
 ### TimeMark (L1/L5 TIME HAT only)
 
-Precise event timestamping via the UBX-TIM-TM2 message. The receiver detects rising and falling edges on the EXTINT pin (GPIO 17) and timestamps them with nanosecond accuracy using GNSS time.
+Precise event timestamping via the UBX-TIM-TM2 message. The receiver detects rising and falling edges on the HAT's external EXTINT input and timestamps them with nanosecond accuracy using GNSS time. EXTINT is not connected to the Raspberry Pi GPIO: the trigger signal comes from your own hardware.
 
-Enable with `enableTimeMark = true` in config, then read events with `waitAndGetFreshTimeMark()` (blocking) or `timeMark()` (polling). The library can also drive the EXTINT pin itself via `enableTimeMarkTrigger()` + `triggerTimeMark()` for software-triggered time marks.
+Enable with `enableTimeMark = true` in config, then read events with `waitAndGetFreshTimeMark()` (blocking) or `timeMark()` (polling).
 
 Each `TimeMark` contains: rising/falling edge TOW (ms + sub-ms ns), week number, event count, accuracy estimate (ns), time base (Receiver/GNSS/UTC), and edge detection flags.
 
@@ -361,12 +463,11 @@ GnssConfig config {
 };
 
 hat->start(config);
-hat->enableTimeMarkTrigger();
-hat->triggerTimeMark();  // toggle EXTINT
 
-auto tm = hat->waitAndGetFreshTimeMark();
-printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
-    tm.towRising_ms, tm.towSubRising_ns, tm.accuracyEstimate_ns);
+// Blocks until an edge arrives on the external EXTINT input
+if (const auto tm = hat->waitAndGetFreshTimeMark())
+    printf("rising TOW: %u ms + %u ns, accuracy: %u ns\n",
+        tm->towRising_ms, tm->towSubRising_ns, tm->accuracyEstimate_ns);
 ```
 
 See the TimeMark examples in `examples/cpp/time-mark/`, `examples/c/time-mark/` and `examples/python/time_mark.py`.
@@ -381,7 +482,7 @@ The u-blox module outputs a configurable pulse signal on GPIO 5. Use `enableTime
 
 ### GPSD Integration
 
-The library can forward NMEA sentences (GGA, RMC, GSA, GSV, ZDA) to a virtual serial port for gpsd. Call `startForwardForGpsd()` to create the virtual TTY, then point gpsd at the path returned by `getGpsdDevicePath()`. The TIME HAT can also be used directly with gpsd via UART (`/dev/ttyAMA0`).
+The library can forward NMEA sentences (GGA, RMC, GSA, GSV, GST, ZDA) to a virtual serial port for gpsd. Call `startForwardForGpsd()` to create the virtual TTY, then point gpsd at the path returned by `getGpsdDevicePath()`. The TIME HAT can also be used directly with gpsd via UART (`/dev/ttyAMA0`).
 
 **USB shortcut (L1 HAT & RTK HAT):** The L1 GNSS HAT and L1/L5 RTK HAT have an exposed USB port connected directly to the u-blox module. Plug a USB cable from the HAT to the Raspberry Pi and the module appears as `/dev/ttyACM0` - gpsd can read it directly without the bridge daemon or the library. This is the simplest way to get gpsd running on these two HATs.
 
@@ -422,7 +523,7 @@ journalctl -u gnsshat-rtk-base -f
 
 ## Architecture
 
-The library is multi-threaded and thread-safe. All navigation data access is mutex-protected -- multiple consumer threads can call `navigation()` or `waitAndGetFreshNavigation()` concurrently. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
+The library is multi-threaded. All navigation data access is mutex-protected, so any number of threads can call `navigation()` concurrently. Each epoch, however, wakes only one waiting thread: a fresh-data notification is consumed by the call that receives it, so threads blocked in `waitAndGetFreshNavigation()` (or `waitForEvent()`) at the same time split the epochs between them. Let one thread wait for fresh data and have the others read `navigation()`. The same holds for `waitAndGetFreshTimeMark()` and `timepulse()`. gpsd forwarding does not take epochs from your thread. Thread safety covers the operations documented above, not arbitrary concurrent configuration or lifecycle changes. The data flow is event-driven (GPIO interrupts on SPI HATs, epoll on UART HAT) with no busy-wait loops.
 
 | HAT | Threads | Data Flow |
 |-----|---------|-----------|
@@ -435,7 +536,7 @@ Optional threads: timepulse interrupt (GPIO 5), NMEA forwarder for gpsd.
 ## Project Structure
 
 ```
-GnssHat/
+gnsshat/
 ├── src/
 │   ├── GnssHat.hpp / .cpp          C++ API and implementation
 │   ├── GnssHat.h / GnssHat_C.cpp   C API wrapper

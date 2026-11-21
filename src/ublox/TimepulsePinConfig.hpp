@@ -20,7 +20,7 @@ enum class ETimepulsePinPolarity : uint8_t
 
 struct TimepulsePinConfig
 {
-    bool active;
+    bool active{false};
 
     struct Pulse
     {
@@ -29,7 +29,8 @@ struct TimepulsePinConfig
     };
     Pulse fixedPulse;
     std::optional<Pulse> pulseWhenNoFix;
-    ETimepulsePinPolarity polarity;
+    ETimepulsePinPolarity polarity{
+        ETimepulsePinPolarity::RisingEdgeAtTopOfSecond};
 };
 
 }  // JimmyPaputto

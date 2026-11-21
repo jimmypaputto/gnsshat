@@ -2,19 +2,30 @@
  * Jimmy Paputto 2025
  */
 
-#include <chrono>
-#include <cstdio>
 #include <csignal>
+#include <cstdio>
+#include <memory>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
 
-volatile sig_atomic_t shutdownRequested = 0;
-
-void signalHandler(int)
+std::thread signalsHandler(JimmyPaputto::IGnssHat& ubxHat)
 {
-    shutdownRequested = 1;
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
 }
 
 auto main() -> int
@@ -23,10 +34,8 @@ auto main() -> int
     // startup lines reach journald only at exit, with misleading timestamps.
     setvbuf(stdout, nullptr, _IOLBF, 0);
 
-    signal(SIGINT, signalHandler);
-    signal(SIGTERM, signalHandler);
-
-    auto* ubxHat = JimmyPaputto::IGnssHat::create();
+    std::unique_ptr<JimmyPaputto::IGnssHat> ubxHat(
+        JimmyPaputto::IGnssHat::create());
 
     JimmyPaputto::GnssConfig config;
     config.measurementRate_Hz = 1;
@@ -46,7 +55,6 @@ auto main() -> int
     if (!isStartupDone)
     {
         printf("Failed to start GNSS module\n");
-        delete ubxHat;
         return 1;
     }
 
@@ -57,7 +65,6 @@ auto main() -> int
     if (!ubxHat->startForwardForGpsd())
     {
         printf("Failed to start NMEA forwarding\r\n");
-        delete ubxHat;
         return 1;
     }
 
@@ -71,15 +78,14 @@ auto main() -> int
     printf("\tgpsmon  # To monitor gpsd and PPS\r\n");
     printf("Daemon is running... Press Ctrl+C to stop\r\n");
 
-    while (!shutdownRequested)
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    auto signalsInterrupt = signalsHandler(*ubxHat);
 
-    printf("\nShutting down daemon...\r\n");
-    ubxHat->stopForwardForGpsd();
+    // Ctrl+C and systemctl stop end it: shutdown() stops the forwarding.
     ubxHat->joinForwardForGpsd();
 
-    printf("Daemon stopped\r\n");
-    delete ubxHat;
-    printf("Clean up completed. Exiting...\r\n");
+    signalsInterrupt.join();
+
+    // The destructor removes the virtual device and releases the HAT
+    printf("\nDaemon stopped\r\n");
     return 0;
 }

@@ -11,7 +11,6 @@
 #include "ublox/SpiDriver.hpp"
 #include "ublox/UartDriver.hpp"
 #include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
-#include "ublox/ubxmsg/UBX_CFG_NAV5.hpp"
 #include "ublox/ubxmsg/UBX_MON_RF.hpp"
 #include "ublox/ubxmsg/UBX_NAV_DOP.hpp"
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"

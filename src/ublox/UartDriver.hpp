@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "ublox/ICommDriver.hpp"
-#include "ublox/ubxmsg/UBX_CFG_PRT.hpp"
 
 #define UBX_UART_DEV "/dev/ttyAMA0"
 
