@@ -168,11 +168,6 @@ constexpr uint8_t keySize(uint32_t key)
     }
 }
 
-constexpr uint8_t groupId(uint32_t key)
-{
-    return (key >> 16) & 0xFF;
-}
-
 }  // JimmyPaputto::UbxCfgKeys
 
 #endif  // JIMMY_PAPUTTO_UBX_CFG_KEYS_HPP_

@@ -179,7 +179,7 @@ TEST(Startup, SendsACommandInATransferOfItsOwnSize)
     EXPECT_EQ(hat.receiver.commands[0].transferSize, poll.size());
 }
 
-TEST(Startup, LeavesTheBusIdleWhileTheSpiPortIsReconfigured)
+TEST(Startup, LeavesTheBusIdleWhileAValsetIsApplied)
 {
     StartupHarness hat;
     hat.receiver.values[UbxCfgKeys::CFG_SPI_MAXFF] = { 50 };

@@ -47,8 +47,7 @@ protected:
 
     bool configure(std::span<const uint32_t> keys);
 
-    bool awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType,
-        bool reconfiguresSpiPort = false);
+    bool awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType);
     bool verifyConfig(std::span<const uint32_t> keys);
     // Issue #40: the receiver can come out of boot with the GNSS engine
     // stopped while the config interface answers normally, so startup
