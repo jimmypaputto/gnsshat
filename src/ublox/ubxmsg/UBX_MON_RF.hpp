@@ -17,7 +17,10 @@ namespace JimmyPaputto::ubxmsg
 class UBX_MON_RF : public IUbxMsg
 {
 public:
-    explicit UBX_MON_RF() = default;
+    explicit UBX_MON_RF()
+    {
+        rfBlocks_.reserve(RfBlock::maxNumberOfRfBlocks);
+    }
 
     std::vector<uint8_t> serialize() const override
     {

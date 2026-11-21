@@ -778,7 +778,9 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
     ack = false;
     std::ranges::fill(rxBuff_, 0);
     commDriver_.transmitReceive(payload, rxBuff_);
-    auto unfinished = ubxParser_.parse(rxBuff_);
+    auto offset = UbxParser::moveUnfinishedToFront(
+        ubxParser_.parse(rxBuff_), rxBuff_
+    );
 
     if (ack)
         return true;
@@ -787,8 +789,6 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     do
     {
-        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
-        const uint32_t offset = unfinished.size();
         const int bytesRead = pollRxData(
             rxBuff_.data() + offset,
             rxBuff_.size() - offset,
@@ -798,8 +798,11 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
         if (bytesRead <= 0)
             continue;
 
-        unfinished = ubxParser_.parse(
-            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        offset = UbxParser::moveUnfinishedToFront(
+            ubxParser_.parse(
+                std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+            ),
+            rxBuff_
         );
 
         if (ack)
@@ -833,7 +836,9 @@ bool StartupBase::pollMonVer(int timeoutMs)
     const auto pollFrame = ubxmsg::UBX_MON_VER::poll();
     std::ranges::fill(rxBuff_, 0);
     commDriver_.transmitReceive(pollFrame, rxBuff_);
-    auto unfinished = ubxParser_.parse(rxBuff_);
+    auto offset = UbxParser::moveUnfinishedToFront(
+        ubxParser_.parse(rxBuff_), rxBuff_
+    );
 
     if (ubxParser_.consumeMonVer())
         return true;
@@ -842,8 +847,6 @@ bool StartupBase::pollMonVer(int timeoutMs)
         + std::chrono::milliseconds(timeoutMs);
     do
     {
-        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
-        const uint32_t offset = unfinished.size();
         const int bytesRead = pollRxData(
             rxBuff_.data() + offset,
             rxBuff_.size() - offset,
@@ -853,8 +856,11 @@ bool StartupBase::pollMonVer(int timeoutMs)
         if (bytesRead <= 0)
             continue;
 
-        unfinished = ubxParser_.parse(
-            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        offset = UbxParser::moveUnfinishedToFront(
+            ubxParser_.parse(
+                std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+            ),
+            rxBuff_
         );
 
         if (ubxParser_.consumeMonVer())

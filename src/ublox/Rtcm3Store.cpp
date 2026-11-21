@@ -16,28 +16,19 @@ Rtcm3Store::Rtcm3Store()
 }
 
 void Rtcm3Store::updateFrame(const uint16_t id,
-    const std::vector<uint8_t>& newFrame)
+    std::span<const uint8_t> newFrame)
 {
     if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
     {
-        auto frameIt = frames_.find(id);
-        if (frameIt == frames_.end())
-        {
-            frames_[id] = newFrame;
-            xSemaphore_.releaseResource();
-            return;
-        }
-
+        const auto [frameIt, inserted] = frames_.try_emplace(id);
         auto& frame = frameIt->second;
 
-        if (frame.size() != newFrame.size())
-        {
-            frame = newFrame;
-            xSemaphore_.releaseResource();
-            return;
-        }
+        // Room for the largest frame once, so that later frames of this
+        // type - MSM sizes vary with the satellites in view - fit in place.
+        if (inserted)
+            frame.reserve(maxFrameSize);
 
-        std::copy(newFrame.begin(), newFrame.end(), frame.begin());
+        frame.assign(newFrame.begin(), newFrame.end());
         xSemaphore_.releaseResource();
     }
 }
@@ -104,19 +95,19 @@ std::vector<std::vector<uint8_t>> Rtcm3Store::waitForFrames()
     return {};
 }
 
-std::vector<std::vector<uint8_t>> Rtcm3Store::waitForFrames(
-    std::stop_token stoken)
+bool Rtcm3Store::waitForFrames(std::stop_token stoken,
+    std::vector<std::vector<uint8_t>>& frames)
 {
+    // The previous batch goes now, so the store gets back an empty vector.
+    frames.clear();
     if (!roverNotifier_.wait(stoken))
-        return {};
-    if (xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
-    {
-        const auto result = incomingFrames_;
-        incomingFrames_.clear();
-        xSemaphore_.releaseResource();
-        return result;
-    }
-    return {};
+        return false;
+    if (!xSemaphore_.takeResource(SEMAPHORE_TIMEOUT))
+        return false;
+
+    frames.swap(incomingFrames_);
+    xSemaphore_.releaseResource();
+    return true;
 }
 
 }  // JimmyPaputto

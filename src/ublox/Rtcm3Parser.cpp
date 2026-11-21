@@ -13,13 +13,9 @@ namespace JimmyPaputto
 {
 
 Rtcm3Parser::Rtcm3Parser(Rtcm3Store& rtcm3Store)
-:   endFrameIt_(frames_.end()),
+:   endFrameIt_(frames_.begin()),
     rtcm3Store_(rtcm3Store)
 {
-    for (auto& frame: frames_)
-    {
-        frame.reserve(1024);
-    }
 }
 
 void Rtcm3Parser::parse(std::span<uint8_t> buffer,
@@ -40,70 +36,38 @@ void Rtcm3Parser::extractFrames(std::span<uint8_t> buffer,
     std::vector<uint8_t>& unfinishedFrame)
 {
     constexpr uint8_t pattern {0xD3};
-    auto bufferBegin = buffer.begin();
+    constexpr std::ptrdiff_t headerSize = 3;
+    constexpr std::ptrdiff_t crcSize = 3;
 
-    for (auto frameIt = frames_.begin(); frameIt != endFrameIt_; frameIt++)
-    {
-        frameIt->clear();
-    }
+    const auto frameSizeAt = [](auto frameBegin) -> std::ptrdiff_t {
+        const std::ptrdiff_t dataLength =
+            ((frameBegin[1] & 0x03) << 8) | frameBegin[2];
+        return headerSize + dataLength + crcSize;
+    };
+
     endFrameIt_ = frames_.begin();
+    auto searchFrom = buffer.begin();
 
-    for (uint16_t frameIndex = 0; frameIndex < maxNumberOfFrames_; frameIndex++)
+    while (endFrameIt_ != frames_.end())
     {
-        const auto beginFrameIterator = std::find(
-            bufferBegin, buffer.end(), pattern
-        );
+        const auto frameBegin = std::find(searchFrom, buffer.end(), pattern);
+        const auto available = std::distance(frameBegin, buffer.end());
+        if (available == 0)
+            break;
 
-        if (beginFrameIterator != buffer.end() &&
-            std::distance(beginFrameIterator, buffer.end()) > 2)
+        // Cut off by the end of the buffer: kept for the next read.
+        if (available < headerSize || available < frameSizeAt(frameBegin))
         {
-            auto endFrameIterator = beginFrameIterator + 1;
-            const uint8_t b1 = *(endFrameIterator);
-            const uint8_t b2 = *(endFrameIterator + 1);
-            const uint16_t dataLength = ((b1 & 0x03) << 8) | b2;
-            if (
-                std::distance(++endFrameIterator, buffer.end()) < dataLength + 4
-            )
-            {
-                std::copy(
-                    beginFrameIterator,
-                    buffer.end(),
-                    std::back_inserter(unfinishedFrame)
-                );
-                break;
-            }
-            else
-            {
-                endFrameIterator += dataLength + 4;
-                std::copy(
-                    beginFrameIterator,
-                    endFrameIterator,
-                    std::back_inserter(frames_[frameIndex])
-                );
-                if (!checkFrame(frames_[frameIndex]))
-                {
-                    frames_[frameIndex].clear();
-                }
-                endFrameIt_++;
-                bufferBegin = endFrameIterator;
-            }
-        }
-        else if (
-            std::distance(beginFrameIterator, buffer.end()) <= 2 &&
-            beginFrameIterator != buffer.end()
-        )
-        {
-            std::copy(
-                beginFrameIterator,
-                buffer.end(),
-                std::back_inserter(unfinishedFrame)
+            unfinishedFrame.insert(
+                unfinishedFrame.end(), frameBegin, buffer.end()
             );
             break;
         }
-        else
-        {
-            break;
-        }
+
+        const auto frameSize = frameSizeAt(frameBegin);
+        const std::span<const uint8_t> frame(frameBegin, frameSize);
+        *endFrameIt_++ = checkFrame(frame) ? frame : std::span<const uint8_t>{};
+        searchFrom = frameBegin + frameSize;
     }
 }
 

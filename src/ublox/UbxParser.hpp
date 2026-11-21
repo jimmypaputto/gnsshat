@@ -6,6 +6,7 @@
 #define JP_UBX_PARSER_HPP_
 
 #include <array>
+#include <cstddef>
 #include <memory>
 #include <span>
 #include <vector>
@@ -27,7 +28,16 @@ public:
     explicit UbxParser(IUbloxConfigRegistry& configRegistry,
         NavigationStore& navigationStore, Notifier& timeMarkNotifier);
 
-    std::vector<uint8_t> parse(std::span<const uint8_t> buffer);
+    // Dispatches every complete frame in `buffer` and returns the frame cut
+    // off at its end, as a view into `buffer` (empty when there is none).
+    // Frames are read in place, so parsing does not allocate.
+    std::span<const uint8_t> parse(std::span<const uint8_t> buffer);
+
+    // Moves the unfinished frame returned by parse() to the front of the
+    // buffer it points into and returns its length, i.e. the offset at which
+    // the next read continues the frame.
+    static std::size_t moveUnfinishedToFront(
+        std::span<const uint8_t> unfinished, std::span<uint8_t> buffer);
 
     // True when the buffer just parsed carried a NAV-PVT frame, i.e. a new
     // navigation epoch reached the NavigationStore.
@@ -48,12 +58,13 @@ public:
     static bool checkFrame(std::span<const uint8_t> frame);
 
 private:
-    void extractFrames(std::span<const uint8_t> buffer);
+    std::span<const uint8_t> extractFrames(std::span<const uint8_t> buffer);
 
+    // Views into the buffer being parsed, valid only during parse(); a frame
+    // that failed its checksum is left empty.
     constexpr static uint16_t maxNumberOfFrames_ = 300;
-    std::array<std::vector<uint8_t>, maxNumberOfFrames_> frames_;
-    std::array<std::vector<uint8_t>, maxNumberOfFrames_>::iterator endFrameIt_;
-    std::vector<uint8_t> unfinishedFrameFromBuffer_;
+    std::array<std::span<const uint8_t>, maxNumberOfFrames_> frames_;
+    std::array<std::span<const uint8_t>, maxNumberOfFrames_>::iterator endFrameIt_;
     IUbloxConfigRegistry& configRegistry_;
     UbxCallbacks ubxCallbacks_;
     UbxFactory ubxFactory_;

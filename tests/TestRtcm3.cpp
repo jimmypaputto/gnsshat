@@ -157,8 +157,8 @@ TEST(Rtcm3Store, GetNonExistentFrame)
 TEST(Rtcm3Store, OverwriteExistingFrame)
 {
     Rtcm3Store store;
-    store.updateFrame(1005, { 0x01 });
-    store.updateFrame(1005, { 0x02, 0x03 });
+    store.updateFrame(1005, std::vector<uint8_t>{ 0x01 });
+    store.updateFrame(1005, std::vector<uint8_t>{ 0x02, 0x03 });
 
     auto result = store.getFrame(1005);
     EXPECT_EQ(result, (std::vector<uint8_t>{ 0x02, 0x03 }));
@@ -167,9 +167,9 @@ TEST(Rtcm3Store, OverwriteExistingFrame)
 TEST(Rtcm3Store, GetFramesMultipleIds)
 {
     Rtcm3Store store;
-    store.updateFrame(1005, { 0xAA });
-    store.updateFrame(1077, { 0xBB });
-    store.updateFrame(1087, { 0xCC });
+    store.updateFrame(1005, std::vector<uint8_t>{ 0xAA });
+    store.updateFrame(1077, std::vector<uint8_t>{ 0xBB });
+    store.updateFrame(1087, std::vector<uint8_t>{ 0xCC });
 
     std::vector<uint16_t> ids = { 1005, 1087 };
     auto frames = store.getFrames(ids);

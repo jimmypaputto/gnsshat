@@ -62,12 +62,10 @@ void M9NRun::execute(std::stop_token stoken)
     moreDataPending_ = !drained;
 
     const auto unfinishedFrame = ubxParser_.parse(
-        std::vector<uint8_t>(runRxBuff_.data(), runRxBuff_.data() + counter)
+        std::span<const uint8_t>(runRxBuff_.data(), counter)
     );
-    std::copy(
-        unfinishedFrame.begin(), unfinishedFrame.end(), runRxBuff_.begin()
-    );
-    runRxBuffOffset_ = unfinishedFrame.size();
+    runRxBuffOffset_ =
+        UbxParser::moveUnfinishedToFront(unfinishedFrame, runRxBuff_);
 
     // Only a pass carrying NAV-PVT is a new epoch: the module bursts the four
     // NAV messages together and MON-* alone some 800 ms later, which used to
@@ -105,18 +103,11 @@ void F10TRun::execute(std::stop_token)
     if (!shouldParse)
         return;
 
-    // TODO: ogar tej alokacji, std::span
     const auto unfinishedFrame = ubxParser_.parse(
-        std::vector<uint8_t>(
-            runRxBuff_.data(),
-            runRxBuff_.data() + runRxBuffOffset_
-        )
+        std::span<const uint8_t>(runRxBuff_.data(), runRxBuffOffset_)
     );
-
-    std::copy(
-        unfinishedFrame.begin(), unfinishedFrame.end(), runRxBuff_.begin()
-    );
-    runRxBuffOffset_ = unfinishedFrame.size();
+    runRxBuffOffset_ =
+        UbxParser::moveUnfinishedToFront(unfinishedFrame, runRxBuff_);
 
     if (ubxParser_.consumeNavigationEpoch())
         navigationNotifier_.notify();
@@ -138,7 +129,7 @@ F9PRun::F9PRun(ICommDriver& commDriver, UbxParser& ubxParser,
     const auto& rtkConfig = config.rtk.value();
     if (rtkConfig.mode == ERtkMode::Base && rtkConfig.base.has_value())
     {
-        unfinishedFrameBuff_.reserve(unfinishedFrameBuffMaxSize);
+        unfinishedFrameBuff_.reserve(Rtcm3Store::maxFrameSize);
         uart_ = createSignalFreeThread([this] (std::stop_token stoken) {
             while (!stoken.stop_requested())
             {
@@ -204,8 +195,10 @@ void F9PRun::executeUartBase()
 void F9PRun::executeUartRover(std::stop_token stoken)
 {
     auto& uartDriver = static_cast<UartDriver&>(*uartDriver_);
-    const auto incomingFrames = rtcm3Store_.waitForFrames(stoken);
-    for (const auto& frame : incomingFrames)
+    if (!rtcm3Store_.waitForFrames(stoken, roverFrames_))
+        return;
+
+    for (const auto& frame : roverFrames_)
     {
         uartDriver.transmit(frame);
     }

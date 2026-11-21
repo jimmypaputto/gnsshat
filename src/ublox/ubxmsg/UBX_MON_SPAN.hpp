@@ -9,6 +9,7 @@
 
 #include "IUbxMsg.hpp"
 #include "ublox/RFBlockSpectrumData.hpp"
+#include "common/Utils.hpp"
 
 
 namespace JimmyPaputto::ubxmsg
@@ -17,7 +18,14 @@ namespace JimmyPaputto::ubxmsg
 class UBX_MON_SPAN : public IUbxMsg
 {
 public:
-    explicit UBX_MON_SPAN() = default;
+    static constexpr std::size_t spectrumSize = 256;
+
+    explicit UBX_MON_SPAN()
+    :   rfBlocksSpectrumData_(RfBlockSpectrumData::maxNumberOfRfBlocks)
+    {
+        for (auto& block : rfBlocksSpectrumData_)
+            block.data.reserve(spectrumSize);
+    }
 
     std::vector<uint8_t> serialize() const override
     {
@@ -34,22 +42,23 @@ public:
         if (length < 4 + numberOfRfBlocks * 272u)
             return false;
 
-        rfBlocksSpectrumData_.clear();
+        rfBlocksSpectrumData_.resize(numberOfRfBlocks);
 
         for (uint8_t i = 0; i < numberOfRfBlocks; i++)
         {
-            RfBlockSpectrumData rfBlockSpectrumData{};
+            const std::size_t offset = 10 + i * 272;
+            auto& rfBlockSpectrumData = rfBlocksSpectrumData_[i];
 
             rfBlockSpectrumData.id = i;
-            rfBlockSpectrumData.data.resize(256);
-            std::copy(serialized.begin() + 10 + (i * 272), serialized.begin() + 10 + 256 + (i * 272), rfBlockSpectrumData.data.begin());
+            rfBlockSpectrumData.data.assign(
+                serialized.begin() + offset,
+                serialized.begin() + offset + spectrumSize
+            );
 
-            rfBlockSpectrumData.span = readLE<uint32_t>(serialized,(10 + 256 + (i * 272)));
-            rfBlockSpectrumData.resolution = readLE<uint32_t>(serialized,(14 + 256 + (i * 272)));
-            rfBlockSpectrumData.centerFreq = readLE<uint32_t>(serialized,(18 + 256 + (i * 272)));
-            rfBlockSpectrumData.gain = serialized[(22 + 256 + (i * 272))];
-
-            rfBlocksSpectrumData_.push_back(rfBlockSpectrumData);
+            rfBlockSpectrumData.span = readLE<uint32_t>(serialized, offset + 256);
+            rfBlockSpectrumData.resolution = readLE<uint32_t>(serialized, offset + 260);
+            rfBlockSpectrumData.centerFreq = readLE<uint32_t>(serialized, offset + 264);
+            rfBlockSpectrumData.gain = serialized[offset + 268];
         }
         return true;
     }
