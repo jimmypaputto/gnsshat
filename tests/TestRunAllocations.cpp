@@ -450,8 +450,6 @@ TEST(RunResync, ParserCarriesFramesCutAtAnyByte)
 
     for (uint8_t cut = 1; cut < streamSize; cut++)
     {
-        // The second differs per cut: the store's PVT is not initialised
-        // and would otherwise keep the value of the previous iteration.
         const auto stream = concat({ navDop(), navPvt(cut) });
         M9NHarness hat;
         std::vector<uint8_t> buffer(stream.size());
@@ -468,4 +466,20 @@ TEST(RunResync, ParserCarriesFramesCutAtAnyByte)
         EXPECT_EQ(hat.navigationStore.navigation().pvt.utc.ss, cut)
             << "cut after byte " << int(cut);
     }
+}
+
+TEST(NavigationStore, IsZeroBeforeTheFirstMessage)
+{
+    alignas(NavigationStore) unsigned char storage[sizeof(NavigationStore)];
+    std::memset(storage, 0xAA, sizeof(storage));
+    auto* store = new (storage) NavigationStore;
+
+    const auto navigation = store->navigation();
+    EXPECT_EQ(navigation.pvt.utc.ss, 0);
+    EXPECT_EQ(navigation.pvt.latitude, 0.0);
+    EXPECT_EQ(navigation.pvt.visibleSatellites, 0);
+    EXPECT_EQ(navigation.dop.geometric, 0.0f);
+    EXPECT_EQ(navigation.geofencing.cfg.confidenceLevel, 0);
+
+    store->~NavigationStore();
 }

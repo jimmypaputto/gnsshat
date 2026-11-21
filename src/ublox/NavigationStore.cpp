@@ -12,7 +12,8 @@ namespace JimmyPaputto
 {
 
 NavigationStore::NavigationStore()
-:   spareSpectrumBlocks_(RfBlockSpectrumData::maxNumberOfRfBlocks)
+:   navigation_(),
+    spareSpectrumBlocks_(RfBlockSpectrumData::maxNumberOfRfBlocks)
 {
     // Sized for the largest message, so that the run loop copies into place
     // even when more satellites or RF blocks show up than ever before.
