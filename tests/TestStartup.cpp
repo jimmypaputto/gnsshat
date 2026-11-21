@@ -196,3 +196,15 @@ TEST(Startup, LeavesTheBusIdleWhileTheSpiPortIsReconfigured)
     EXPECT_EQ(hat.receiver.values[UbxCfgKeys::CFG_SPI_MAXFF],
         std::vector<uint8_t>{ 63 });
 }
+
+TEST(Startup, StopsWaitingWhenTheReceiverRejectsTheCommand)
+{
+    StartupHarness hat;
+    hat.receiver.rejectCommands = true;
+    const auto poll = ubxmsg::UBX_CFG_VALGET::poll(UbxCfgKeys::CFG_RATE_MEAS);
+
+    const auto start = Clock::now();
+    EXPECT_FALSE(hat.startup.awaitAck(poll, EUbxMsg::UBX_CFG_VALGET));
+
+    EXPECT_LT(Clock::now() - start, std::chrono::seconds(1));
+}

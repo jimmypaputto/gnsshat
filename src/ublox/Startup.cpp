@@ -776,7 +776,17 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType,
     bool reconfiguresSpiPort)
 {
     bool& ack = configRegistry_.ack()[to_underlying(msgType)];
+    bool& nak = configRegistry_.nak()[to_underlying(msgType)];
     ack = false;
+    nak = false;
+    const auto rejected = [&payload]() {
+        fprintf(
+            stderr,
+            "[Startup] Message 0x%02X 0x%02X rejected by the receiver\r\n",
+            payload[2], payload[3]
+        );
+        return false;
+    };
 
     // The receiver applies new SPI port settings up to 2 ms after the frame,
     // and whatever a transfer clocks out meanwhile comes out bit-shifted. The
@@ -794,6 +804,8 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType,
 
     if (ack)
         return true;
+    if (nak)
+        return rejected();
 
     constexpr auto timeout = std::chrono::seconds(5);
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -817,6 +829,8 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType,
 
         if (ack)
             return true;
+        if (nak)
+            return rejected();
     }
     while (std::chrono::steady_clock::now() < deadline);
 
