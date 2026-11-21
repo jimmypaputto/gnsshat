@@ -19,32 +19,29 @@ class UBX_NAV_SAT: public IUbxMsg
 public:
     explicit UBX_NAV_SAT() = default;
 
-    explicit UBX_NAV_SAT(std::span<const uint8_t> frame)
-    {
-        satellites_.reserve(SatelliteInfo::maxNumberOfSatellites);
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return {};
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
-        const uint8_t numSvs = serialized[11];
-
-        satellites_.clear();
-
         constexpr uint8_t headerSize = 14;
         constexpr uint8_t blockSize = 12;
+
+        const std::size_t length = payloadLength(serialized);
+        if (length < 8)
+            return false;
+
+        const uint8_t numSvs = serialized[11];
+        if (length < 8 + numSvs * std::size_t{blockSize})
+            return false;
+
+        satellites_.clear();
 
         for (uint8_t i = 0; i < numSvs; i++)
         {
             const size_t offset = headerSize + i * blockSize;
-
-            if (offset + blockSize > serialized.size())
-                break;
 
             SatelliteInfo sat;
 
@@ -65,6 +62,7 @@ public:
 
             satellites_.push_back(sat);
         }
+        return true;
     }
 
     const std::vector<SatelliteInfo>& satellites() const

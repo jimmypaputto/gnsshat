@@ -18,24 +18,28 @@ class UBX_NAV_GEOFENCE: public IUbxMsg
 public:
     explicit UBX_NAV_GEOFENCE() = default;
 
-    explicit UBX_NAV_GEOFENCE(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
-
     std::vector<uint8_t> serialize() const override
     {
         return {};
     }
 
-    void deserialize(std::span<const uint8_t> serialized) override
+    bool deserialize(std::span<const uint8_t> serialized) override
     {
+        const std::size_t length = payloadLength(serialized);
+        if (length < 8)
+            return false;
+
+        const uint8_t numberOfGeofences = serialized[12];
+        if (numberOfGeofences > nav_.geofencesStatus.size()
+            || length < 8 + numberOfGeofences * 2u)
+            return false;
+
         nav_ = Geofencing::Nav{};
         nav_.iTOW = readLE<uint32_t>(serialized, 6);
         nav_.geofencingStatus = static_cast<EGeofencingStatus>(serialized[11]);
         if (nav_.geofencingStatus == EGeofencingStatus::Active)
         {
-            nav_.numberOfGeofences = serialized[12];
+            nav_.numberOfGeofences = numberOfGeofences;
             nav_.combinedState = static_cast<EGeofenceStatus>(serialized[13]);
             for (uint8_t i = 0; i < nav_.numberOfGeofences; i++)
             {
@@ -43,6 +47,7 @@ public:
                     static_cast<EGeofenceStatus>(serialized[14 + 2*i]);
             }
         }
+        return true;
     }
 
     inline Geofencing::Nav nav() const

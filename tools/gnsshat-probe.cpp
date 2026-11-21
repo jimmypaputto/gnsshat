@@ -59,8 +59,12 @@ static bool pollMonVer(JimmyPaputto::ICommDriver& driver)
             }
 
             JimmyPaputto::ubxmsg::UBX_MON_VER monVer;
-            monVer.deserialize(
-                std::span<const uint8_t>(rxBuff.data() + i, frameLen));
+            if (!monVer.deserialize(
+                std::span<const uint8_t>(rxBuff.data() + i, frameLen)))
+            {
+                printf("  MON-VER response too short\n");
+                return false;
+            }
 
             printf("\nFirmware:\n");
             printf("  Software: %s\n", monVer.swVersion().c_str());

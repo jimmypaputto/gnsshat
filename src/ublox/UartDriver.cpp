@@ -4,6 +4,7 @@
 
 #include "ublox/UartDriver.hpp"
 
+#include <cstdio>
 #include <cstring>
 
 #include <fcntl.h>

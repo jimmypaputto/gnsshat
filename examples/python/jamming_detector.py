@@ -67,32 +67,26 @@ def analyze_rf_block(rf_block):
 
 
 def main():
-    ubx_hat = gnsshat.GnssHat()
-    ubx_hat.soft_reset_hot_start()
-
-    is_startup_done = ubx_hat.start(create_default_config())
-    if not is_startup_done:
-        print("Startup failed, exit")
-        return -1
-
-    print("Startup done, ublox configured")
-    print("Monitoring for jamming and interference...")
-    print("Press Ctrl+C to stop\n")
-
     try:
-        while True:
-            rf_blocks = ubx_hat.wait_and_get_fresh_navigation().rf_blocks
-            for rf_block in rf_blocks:
-                print_rf_block(rf_block)
-                analyze_rf_block(rf_block)
-                print()
+        with gnsshat.GnssHat() as ubx_hat:
+            ubx_hat.soft_reset_hot_start()
 
+            if not ubx_hat.start(create_default_config()):
+                print("Startup failed, exit")
+                return -1
+
+            print("Startup done, ublox configured")
+            print("Monitoring for jamming and interference...")
+            print("Press Ctrl+C to stop\n")
+
+            while (navigation := ubx_hat.wait_and_get_fresh_navigation()) is not None:
+                for rf_block in navigation.rf_blocks:
+                    print_rf_block(rf_block)
+                    analyze_rf_block(rf_block)
+                    print()
     except KeyboardInterrupt:
         print("\nStopping jamming detection...")
-    except Exception as e:
-        print(f"Error: {e}")
-        return -1
-    
+
     print("Program finished")
     return 0
 

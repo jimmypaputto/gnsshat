@@ -2,24 +2,15 @@
  * Jimmy Paputto 2025
  */
 
-#include <chrono>
-#include <cstdio>
 #include <csignal>
+#include <cstdio>
+#include <memory>
 #include <thread>
-#include <atomic>
 
 #include <jimmypaputto/GnssHat.hpp>
 
 
 using namespace JimmyPaputto;
-
-std::atomic<bool> running{true};
-
-void signalHandler(int signal)
-{
-    printf("\nReceived signal %d, shutting down...\r\n", signal);
-    running = false;
-}
 
 void print(const Navigation& navigation)
 {
@@ -31,12 +22,27 @@ void print(const Navigation& navigation)
            navigation.pvt.altitude);
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
-    signal(SIGINT, signalHandler);
-    signal(SIGTERM, signalHandler);
-
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
 
     GnssConfig config;
     config.measurementRate_Hz = 1;
@@ -54,7 +60,6 @@ auto main() -> int
     if (!isStartupDone)
     {
         printf("Failed to start GNSS module\r\n");
-        delete ubxHat;
         return 1;
     }
 
@@ -71,21 +76,19 @@ auto main() -> int
     else
     {
         printf("Failed to start NMEA forwarding\n");
-        running = false;
+        return 1;
     }
 
-    while (running)
-    {
-        // You can do whatever you want here, nmea forwarder is running
-        // in background without collisions with your application,
-        // you can use gpsd simultaneously.
-        const auto navigation = ubxHat->waitAndGetFreshNavigation();
-        print(navigation);
-    }
+    auto signalsInterrupt = signalsHandler(*ubxHat);
 
-    ubxHat->stopForwardForGpsd();
-    ubxHat->joinForwardForGpsd();
-    delete ubxHat;
+    // You can do whatever you want here, nmea forwarder is running
+    // in background without collisions with your application,
+    // you can use gpsd simultaneously.
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
+        print(*navigation);
 
-    return 0;
+    signalsInterrupt.join();
+
+    printf("\nShutting down...\r\n");
+    return 0;  // the destructor stops the forwarder and removes its device
 }

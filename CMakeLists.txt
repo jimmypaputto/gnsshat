@@ -2,7 +2,7 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-project(gnsshat VERSION 1.2.0)
+project(gnsshat VERSION 2.0.0)
 
 # Absolute paths to this project, so they stay correct when gnsshat is pulled
 # into another build with add_subdirectory or FetchContent -- CMAKE_SOURCE_DIR
@@ -62,7 +62,7 @@ if(GNSSHAT_DETECTED_PLATFORM STREQUAL "auto" AND CMAKE_SYSTEM_PROCESSOR STREQUAL
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
-    if(RPI_MODEL MATCHES "Raspberry Pi 5")
+    if(RPI_MODEL MATCHES "Raspberry Pi 5" OR RPI_MODEL MATCHES "Raspberry Pi Compute Module 5")
         set(GNSSHAT_DETECTED_PLATFORM "rpi5")
     elseif(RPI_MODEL MATCHES "Raspberry Pi 4")
         set(GNSSHAT_DETECTED_PLATFORM "rpi4")
@@ -127,7 +127,6 @@ set(LIB_SOURCES
     src/common/JPGuard.cpp
     src/common/Utils.cpp
     src/ublox/ubxmsg/IUbxMsg.cpp
-    src/ublox/ubxmsg/UBX_CFG_VALGET.cpp
     src/ublox/BaseConfig.cpp
     src/ublox/GnssConfig.cpp
     src/ublox/NavigationStore.cpp
@@ -157,6 +156,20 @@ target_include_directories(gnsshat
         $<BUILD_INTERFACE:${GNSSHAT_ROOT_DIR}/src>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+
+# The source tree has no jimmypaputto/ directory, so mirror the installed layout
+# in the build tree: projects using gnsshat via add_subdirectory or FetchContent
+# then resolve <jimmypaputto/...> here instead of in a system-wide install.
+file(MAKE_DIRECTORY ${GNSSHAT_BUILD_DIR}/include)
+execute_process(
+    COMMAND ln -snf ${GNSSHAT_ROOT_DIR}/src ${GNSSHAT_BUILD_DIR}/include/jimmypaputto
+    RESULT_VARIABLE _gnsshat_link_result
+)
+if(NOT _gnsshat_link_result EQUAL 0)
+    message(FATAL_ERROR "Failed to create ${GNSSHAT_BUILD_DIR}/include/jimmypaputto")
+endif()
+unset(_gnsshat_link_result)
+target_include_directories(gnsshat PUBLIC $<BUILD_INTERFACE:${GNSSHAT_BUILD_DIR}/include>)
 
 # Git info for BuildInfo
 execute_process(
@@ -214,10 +227,6 @@ if(BUILD_TESTS)
 endif()
 
 if(BUILD_EXAMPLES)
-    file(MAKE_DIRECTORY ${GNSSHAT_BUILD_DIR}/include)
-    execute_process(COMMAND ln -snf ${GNSSHAT_ROOT_DIR}/src ${GNSSHAT_BUILD_DIR}/include/jimmypaputto)
-    target_include_directories(gnsshat PUBLIC $<BUILD_INTERFACE:${GNSSHAT_BUILD_DIR}/include>)
-
     # C examples
     add_subdirectory(examples/c/geofencing)
     add_subdirectory(examples/c/hot-start)
@@ -346,6 +355,7 @@ install(
 install(
     FILES
         src/GnssHat.hpp
+        src/EHatEvents.hpp
         src/GnssHat.h
         src/Version.hpp
     DESTINATION

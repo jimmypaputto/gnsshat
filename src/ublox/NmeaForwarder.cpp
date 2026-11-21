@@ -4,6 +4,8 @@
 
 #include "ublox/NmeaForwarder.hpp"
 
+#include "common/ThreadingSignals.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -181,6 +183,7 @@ bool NmeaForwarder::createVirtualTty()
         return false;
     }
 
+    ptyPath_ = slaveName;
     chmod(slaveName, 0666);
     chmod(devicePath_.c_str(), 0666);
 
@@ -211,18 +214,28 @@ void NmeaForwarder::startForwarding(const NavigationStore& navigationStore,
     }
 
     lastEpoch_.clear();
-    forwardingThread_ = std::jthread(
+    forwardingThread_ = createSignalFreeThread(
         [this, &navigationStore, &navigationNotifier](std::stop_token stoken) {
             forwardingThread(navigationStore, navigationNotifier, stoken);
         }
     );
+    running_.store(true);
 }
 
 void NmeaForwarder::stopForwarding()
 {
     forwardingThread_.request_stop();
+    running_.store(false);
 
-    if (!devicePath_.empty())
+    if (devicePath_.empty())
+        return;
+
+    // Every forwarder uses the same device path; leave it alone once a newer
+    // forwarder has pointed it at its own pty.
+    char target[256];
+    const ssize_t length =
+        readlink(devicePath_.c_str(), target, sizeof(target) - 1);
+    if (length > 0 && ptyPath_ == std::string(target, length))
         unlink(devicePath_.c_str());
 }
 
@@ -230,12 +243,12 @@ void NmeaForwarder::joinForwarding()
 {
     if (forwardingThread_.joinable())
         forwardingThread_.join();
+    running_.store(false);
 }
 
 bool NmeaForwarder::isRunning() const
 {
-    return forwardingThread_.joinable()
-        && !forwardingThread_.get_stop_token().stop_requested();
+    return running_.load();
 }
 
 void NmeaForwarder::forwardingThread(const NavigationStore& navigationStore,

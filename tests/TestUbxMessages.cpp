@@ -8,13 +8,39 @@
 #include "ublox/ubxmsg/UBX_MON_RF.hpp"
 #include "ublox/ubxmsg/UBX_MON_SYS.hpp"
 #include "ublox/ubxmsg/UBX_NAV_GEOFENCE.hpp"
+#include "ublox/ubxmsg/UBX_CFG_CFG.hpp"
 #include "ublox/ubxmsg/UBX_CFG_RST.hpp"
 #include "ublox/ubxmsg/UBX_CFG_VALSET.hpp"
+#include "ublox/ubxmsg/UBX_CFG_VALGET.hpp"
+#include "ublox/UbxCfgKeys.hpp"
+#include "ublox/UbxFactory.hpp"
 #include "ublox/UbxParser.hpp"
 #include "common/Utils.hpp"
 
 using namespace JimmyPaputto;
 using namespace JimmyPaputto::ubxmsg;
+
+namespace
+{
+
+// Fills sync, class, id and the length field into the first 6 bytes of
+// header + payload and appends the checksum, giving the frame the parser
+// hands to deserialize().
+std::vector<uint8_t> completeFrame(std::vector<uint8_t> frame,
+    uint8_t classId, uint8_t msgId)
+{
+    const auto length = static_cast<uint16_t>(frame.size() - 6);
+    frame[0] = 0xB5;
+    frame[1] = 0x62;
+    frame[2] = classId;
+    frame[3] = msgId;
+    frame[4] = static_cast<uint8_t>(length);
+    frame[5] = static_cast<uint8_t>(length >> 8);
+    UbxParser::addChecksum(frame);
+    return frame;
+}
+
+}  // namespace
 
 
 class NavPvtTest : public ::testing::Test
@@ -22,7 +48,7 @@ class NavPvtTest : public ::testing::Test
 protected:
     std::vector<uint8_t> buildPvtFrame()
     {
-        std::vector<uint8_t> frame(92, 0);
+        std::vector<uint8_t> frame(6 + 92, 0);
 
         // year=2025 at offset 10
         uint16_t year = 2025;
@@ -89,7 +115,8 @@ protected:
 TEST_F(NavPvtTest, DeserializesDateAndTime)
 {
     auto frame = buildPvtFrame();
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     auto pvt = msg.pvt();
 
     EXPECT_EQ(pvt.date.year, 2025);
@@ -107,7 +134,8 @@ TEST_F(NavPvtTest, DeserializesDateAndTime)
 TEST_F(NavPvtTest, DeserializesFixInfo)
 {
     auto frame = buildPvtFrame();
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     auto pvt = msg.pvt();
 
     EXPECT_EQ(pvt.fixType, EFixType::Fix3D);
@@ -119,7 +147,8 @@ TEST_F(NavPvtTest, DeserializesFixInfo)
 TEST_F(NavPvtTest, DeserializesPosition)
 {
     auto frame = buildPvtFrame();
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     auto pvt = msg.pvt();
 
     EXPECT_NEAR(pvt.longitude, 12.456789, 0.0000002);
@@ -131,7 +160,8 @@ TEST_F(NavPvtTest, DeserializesPosition)
 TEST_F(NavPvtTest, DeserializesAccuracyAndSpeed)
 {
     auto frame = buildPvtFrame();
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     auto pvt = msg.pvt();
 
     EXPECT_NEAR(pvt.horizontalAccuracy, 2.5f, 0.01f);
@@ -146,7 +176,8 @@ TEST_F(NavPvtTest, DGNSSQuality)
 {
     auto frame = buildPvtFrame();
     frame[27] = 0x03; // gnssFixOK + diffSoln (bit 1)
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     EXPECT_EQ(msg.pvt().fixQuality, EFixQuality::DGNSS);
 }
 
@@ -154,7 +185,8 @@ TEST_F(NavPvtTest, FloatRtkQuality)
 {
     auto frame = buildPvtFrame();
     frame[27] = 0x41; // gnssFixOK + carrSoln bit6=1
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     EXPECT_EQ(msg.pvt().fixQuality, EFixQuality::FloatRtk);
 }
 
@@ -162,7 +194,8 @@ TEST_F(NavPvtTest, FixedRtkQuality)
 {
     auto frame = buildPvtFrame();
     frame[27] = 0x81; // gnssFixOK + carrSoln bit7=1
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     EXPECT_EQ(msg.pvt().fixQuality, EFixQuality::FixedRTK);
 }
 
@@ -171,7 +204,8 @@ TEST_F(NavPvtTest, NoFix)
     auto frame = buildPvtFrame();
     frame[26] = 0x00; // NoFix
     frame[27] = 0x00;
-    UBX_NAV_PVT msg(frame);
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x07)));
     EXPECT_EQ(msg.pvt().fixType, EFixType::NoFix);
     EXPECT_EQ(msg.pvt().fixQuality, EFixQuality::Invalid);
 }
@@ -193,7 +227,8 @@ TEST(NavDop, DeserializesAllFields)
     setU16(20, 60);   // nDOP = 0.60
     setU16(22, 50);   // eDOP = 0.50
 
-    UBX_NAV_DOP msg(frame);
+    UBX_NAV_DOP msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x04)));
     auto dop = msg.dop();
 
     EXPECT_NEAR(dop.geometric, 1.50f, 0.01f);
@@ -254,7 +289,8 @@ TEST_F(NavSatTest, DeserializesOneSatellite)
     sat.ephAvail = true;
 
     auto frame = buildSatFrame(1, { sat });
-    UBX_NAV_SAT msg(frame);
+    UBX_NAV_SAT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x35)));
 
     ASSERT_EQ(msg.satellites().size(), 1u);
     const auto& s = msg.satellites()[0];
@@ -276,7 +312,8 @@ TEST_F(NavSatTest, DeserializesMultipleSatellites)
     SatelliteInfo glo { .gnssId = EGnssId::GLONASS, .svId = 20, .cno = 15 };
 
     auto frame = buildSatFrame(3, { gps, gal, glo });
-    UBX_NAV_SAT msg(frame);
+    UBX_NAV_SAT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x35)));
 
     ASSERT_EQ(msg.satellites().size(), 3u);
     EXPECT_EQ(msg.satellites()[0].gnssId, EGnssId::GPS);
@@ -287,7 +324,8 @@ TEST_F(NavSatTest, DeserializesMultipleSatellites)
 TEST_F(NavSatTest, ZeroSatellites)
 {
     auto frame = buildSatFrame(0, {});
-    UBX_NAV_SAT msg(frame);
+    UBX_NAV_SAT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x35)));
     EXPECT_TRUE(msg.satellites().empty());
 }
 
@@ -296,7 +334,8 @@ TEST_F(NavSatTest, NegativeElevation)
     SatelliteInfo sat {};
     sat.elevation = -10;
     auto frame = buildSatFrame(1, { sat });
-    UBX_NAV_SAT msg(frame);
+    UBX_NAV_SAT msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x35)));
     EXPECT_EQ(msg.satellites()[0].elevation, -10);
 }
 
@@ -319,7 +358,8 @@ TEST(MonRf, DeserializesTwoBlocksM9)
     frame[13 + 24] = 0x01;
     frame[31 + 24] = 0x00;
 
-    UBX_MON_RF msg(frame);
+    UBX_MON_RF msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x0A, 0x38)));
     ASSERT_EQ(msg.rfBlocks().size(), 2u);
 
     EXPECT_EQ(msg.rfBlocks()[0].id, 0x00);
@@ -354,7 +394,8 @@ TEST(MonRf, DeserializesTwoBlocksF10T)
     frame[13 + 24] = 0x01;
     frame[31 + 24] = 0x04;
 
-    UBX_MON_RF msg(frame);
+    UBX_MON_RF msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x0A, 0x38)));
     ASSERT_EQ(msg.rfBlocks().size(), 2u);
 
     EXPECT_EQ(msg.rfBlocks()[0].id, 0x00);
@@ -386,7 +427,8 @@ TEST(NavGeofence, DeserializesActiveGeofencing)
     frame[14] = 0x01; // fence 0 = Inside
     frame[16] = 0x02; // fence 1 = Outside
 
-    UBX_NAV_GEOFENCE msg(frame);
+    UBX_NAV_GEOFENCE msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x39)));
     auto nav = msg.nav();
 
     EXPECT_EQ(nav.iTOW, 123456u);
@@ -402,7 +444,8 @@ TEST(NavGeofence, NotAvailable)
     std::vector<uint8_t> frame(14, 0);
     frame[11] = 0x00; // NotAvailable
 
-    UBX_NAV_GEOFENCE msg(frame);
+    UBX_NAV_GEOFENCE msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x01, 0x39)));
     auto nav = msg.nav();
 
     EXPECT_EQ(nav.geofencingStatus, EGeofencingStatus::NotAvailable);
@@ -443,7 +486,8 @@ TEST(MonSys, DeserializesPayload)
     // tempValue I1 @ +18 = -5
     frame[off + 18] = static_cast<uint8_t>(static_cast<int8_t>(-5));
 
-    UBX_MON_SYS msg(frame);
+    UBX_MON_SYS msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x0A, 0x39)));
     const auto& sh = msg.systemHealth();
 
     EXPECT_TRUE(sh.valid);
@@ -465,7 +509,8 @@ TEST(MonSys, DeserializesPayload)
 TEST(MonSys, RejectsTruncatedFrame)
 {
     std::vector<uint8_t> frame(6 + 10, 0x00);
-    UBX_MON_SYS msg(frame);
+    UBX_MON_SYS msg;
+    EXPECT_FALSE(msg.deserialize(completeFrame(frame, 0x0A, 0x39)));
     EXPECT_FALSE(msg.systemHealth().valid);
 }
 
@@ -527,4 +572,247 @@ TEST(CfgRst, StartGnssFrame)
         0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x09, 0x00, 0x17, 0x76
     };
     EXPECT_EQ(frame, expected);
+}
+
+namespace
+{
+
+void appendCfgKey(std::vector<uint8_t>& frame, uint32_t key,
+    std::initializer_list<uint8_t> value)
+{
+    for (int shift = 0; shift < 32; shift += 8)
+        frame.push_back(static_cast<uint8_t>(key >> shift));
+    frame.insert(frame.end(), value);
+}
+
+// Header (sync, class, id, length) + version, layer, position
+std::vector<uint8_t> valgetResponseHeader()
+{
+    return { 0xB5, 0x62, 0x06, 0x8B, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
+}
+
+}  // namespace
+
+TEST(CfgKeys, KeySizeFromKeyId)
+{
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_SPI_ENABLED), 1);  // L
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_SPI_MAXFF), 1);    // U1
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_RATE_MEAS), 2);    // U2
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_UART1_BAUDRATE), 4);
+    EXPECT_EQ(UbxCfgKeys::keySize(UbxCfgKeys::CFG_TP_DUTY_TP1), 8);  // R8
+    EXPECT_EQ(UbxCfgKeys::keySize(0x00000001), 0);
+    EXPECT_EQ(UbxCfgKeys::keySize(0x60000001), 0);
+    EXPECT_EQ(UbxCfgKeys::keySize(0x70000001), 0);
+}
+
+// Startup verifies every written key with VALGET, so a response it cannot
+// parse fails start().
+TEST(CfgValget, DeserializesNavigationFilterKeys)
+{
+    auto frame = valgetResponseHeader();
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_FIXMODE, {0x03});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PDOP, {0xFA, 0x00});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TDOP, {0xFA, 0x00});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_PACC, {0x64, 0x00});
+    appendCfgKey(frame, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC, {0x5E, 0x01});
+
+    UBX_CFG_VALGET msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x06, 0x8B)));
+    const auto& data = msg.configData();
+    ASSERT_EQ(data.size(), 5u);
+    EXPECT_EQ(data[0].key, UbxCfgKeys::CFG_NAVSPG_FIXMODE);
+    EXPECT_EQ(data[0].value, (std::vector<uint8_t>{0x03}));
+    EXPECT_EQ(data[1].value, (std::vector<uint8_t>{0xFA, 0x00}));
+    EXPECT_EQ(data[2].value, (std::vector<uint8_t>{0xFA, 0x00}));
+    EXPECT_EQ(data[3].value, (std::vector<uint8_t>{0x64, 0x00}));
+    EXPECT_EQ(data[4].key, UbxCfgKeys::CFG_NAVSPG_OUTFIL_TACC);
+    EXPECT_EQ(data[4].value, (std::vector<uint8_t>{0x5E, 0x01}));
+}
+
+// Keys the library never names (e.g. a newer firmware's) still parse,
+// because the value size comes from the key ID.
+TEST(CfgValget, DeserializesKeysOutsideUbxCfgKeys)
+{
+    auto frame = valgetResponseHeader();
+    appendCfgKey(frame, 0x10FF0001, {0x01});
+    appendCfgKey(frame, 0x30FF0002, {0x34, 0x12});
+    appendCfgKey(frame, 0x40FF0003, {0x78, 0x56, 0x34, 0x12});
+    appendCfgKey(frame, 0x50FF0004, {1, 2, 3, 4, 5, 6, 7, 8});
+
+    UBX_CFG_VALGET msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(frame, 0x06, 0x8B)));
+    const auto& data = msg.configData();
+    ASSERT_EQ(data.size(), 4u);
+    EXPECT_EQ(data[0].value.size(), 1u);
+    EXPECT_EQ(msg.getConfigValue(0x30FF0002),
+        (std::vector<uint8_t>{0x34, 0x12}));
+    EXPECT_EQ(msg.getConfigValue(0x40FF0003),
+        (std::vector<uint8_t>{0x78, 0x56, 0x34, 0x12}));
+    EXPECT_EQ(data[3].value, (std::vector<uint8_t>{1, 2, 3, 4, 5, 6, 7, 8}));
+}
+
+// A reserved size code leaves no way to find the next key, so the whole
+// response is rejected and the previous one kept.
+TEST(CfgValget, RejectsReservedSizeCode)
+{
+    auto good = valgetResponseHeader();
+    appendCfgKey(good, UbxCfgKeys::CFG_RATE_MEAS, {0xE8, 0x03});
+    auto bad = valgetResponseHeader();
+    appendCfgKey(bad, UbxCfgKeys::CFG_SPI_ENABLED, {0x01});
+    appendCfgKey(bad, 0x60FF0001, {0xAA});
+
+    UBX_CFG_VALGET msg;
+    ASSERT_TRUE(msg.deserialize(completeFrame(good, 0x06, 0x8B)));
+    EXPECT_FALSE(msg.deserialize(completeFrame(bad, 0x06, 0x8B)));
+    ASSERT_EQ(msg.configData().size(), 1u);
+    EXPECT_EQ(msg.configData()[0].key, UbxCfgKeys::CFG_RATE_MEAS);
+}
+
+TEST(CfgValget, RejectsTruncatedValue)
+{
+    auto frame = valgetResponseHeader();
+    appendCfgKey(frame, UbxCfgKeys::CFG_UART1_BAUDRATE, {0x00, 0xC2, 0x01});
+
+    UBX_CFG_VALGET msg;
+    EXPECT_FALSE(msg.deserialize(completeFrame(frame, 0x06, 0x8B)));
+    EXPECT_TRUE(msg.configData().empty());
+}
+
+// An empty response is not an error: verifying the keys then reports
+// what is missing.
+TEST(CfgValget, AcceptsResponseWithoutKeys)
+{
+    UBX_CFG_VALGET msg;
+    EXPECT_TRUE(msg.deserialize(completeFrame(valgetResponseHeader(), 0x06, 0x8B)));
+    EXPECT_TRUE(msg.configData().empty());
+}
+
+namespace
+{
+
+struct ReceivedMessage
+{
+    const char* name;
+    EUbxMsg eUbxMsg;
+    uint8_t classId;
+    uint8_t msgId;
+    std::vector<uint8_t> payload;  // the shortest valid payload
+};
+
+std::vector<uint8_t> frameWithPayload(const ReceivedMessage& m,
+    std::span<const uint8_t> payload)
+{
+    std::vector<uint8_t> frame(6, 0);
+    frame.insert(frame.end(), payload.begin(), payload.end());
+    return completeFrame(frame, m.classId, m.msgId);
+}
+
+std::vector<uint8_t> payloadWithCount(std::size_t size, std::size_t countAt)
+{
+    std::vector<uint8_t> payload(size, 0);
+    payload[countAt] = 1;
+    return payload;
+}
+
+std::vector<ReceivedMessage> receivedMessages()
+{
+    std::vector<uint8_t> valget = { 0x01, 0x00, 0x00, 0x00 };
+    appendCfgKey(valget, UbxCfgKeys::CFG_RATE_MEAS, {0xE8, 0x03});
+
+    using enum EUbxMsg;
+    return {
+        { "ACK-ACK",      UBX_ACK_ACK,      0x05, 0x01, std::vector<uint8_t>(2) },
+        { "ACK-NAK",      UBX_ACK_NAK,      0x05, 0x00, std::vector<uint8_t>(2) },
+        { "CFG-VALGET",   UBX_CFG_VALGET,   0x06, 0x8B, valget },
+        { "MON-RF",       UBX_MON_RF,       0x0A, 0x38, payloadWithCount(4 + 24, 1) },
+        { "MON-SPAN",     UBX_MON_SPAN,     0x0A, 0x31, payloadWithCount(4 + 272, 1) },
+        { "MON-SYS",      UBX_MON_SYS,      0x0A, 0x39, std::vector<uint8_t>(24) },
+        { "MON-VER",      UBX_MON_VER,      0x0A, 0x04, std::vector<uint8_t>(40) },
+        { "NAV-DOP",      UBX_NAV_DOP,      0x01, 0x04, std::vector<uint8_t>(18) },
+        { "NAV-GEOFENCE", UBX_NAV_GEOFENCE, 0x01, 0x39, payloadWithCount(8 + 2, 6) },
+        { "NAV-PVT",      UBX_NAV_PVT,      0x01, 0x07, std::vector<uint8_t>(92) },
+        { "NAV-SAT",      UBX_NAV_SAT,      0x01, 0x35, payloadWithCount(8 + 12, 5) },
+        { "TIM-TM2",      UBX_TIM_TM2,      0x0D, 0x03, std::vector<uint8_t>(28) },
+    };
+}
+
+}  // namespace
+
+// Every message the receiver sends checks its payload size instead of
+// reading past the frame, so the parser can drop a short frame.
+TEST(UbxFactory, RejectsShortPayloads)
+{
+    UbxFactory factory;
+    for (const auto& m : receivedMessages())
+    {
+        SCOPED_TRACE(m.name);
+        EXPECT_NE(factory.create(m.eUbxMsg, frameWithPayload(m, m.payload)),
+            nullptr);
+
+        const std::span<const uint8_t> shorter(
+            m.payload.data(), m.payload.size() - 1);
+        EXPECT_EQ(factory.create(m.eUbxMsg, frameWithPayload(m, shorter)),
+            nullptr);
+        EXPECT_EQ(factory.create(m.eUbxMsg, frameWithPayload(m, {})), nullptr);
+    }
+}
+
+// The length field has to match the frame, or the payload bounds are unknown.
+TEST(UbxFactory, RejectsLengthFieldMismatch)
+{
+    UbxFactory factory;
+    for (const auto& m : receivedMessages())
+    {
+        SCOPED_TRACE(m.name);
+        auto frame = frameWithPayload(m, m.payload);
+        frame.insert(frame.end() - 2, 0x00);
+        EXPECT_EQ(factory.create(m.eUbxMsg, frame), nullptr);
+    }
+}
+
+// The receiver never sends the messages the library only writes.
+TEST(UbxFactory, IgnoresInputOnlyMessages)
+{
+    UbxFactory factory;
+    const auto valset = UBX_CFG_VALSET::setU1(0x20640001, 0x04);
+    EXPECT_EQ(factory.create(EUbxMsg::UBX_CFG_VALSET, valset), nullptr);
+    EXPECT_EQ(factory.create(EUbxMsg::UBX_CFG_CFG,
+        UBX_CFG_CFG::saveToFlash()), nullptr);
+    EXPECT_EQ(factory.create(EUbxMsg::END_UBX, valset), nullptr);
+}
+
+TEST(NavPvtReject, KeepsPreviousStateOnShortFrame)
+{
+    std::vector<uint8_t> payload(92, 0);
+    payload[23] = 12;  // numSV
+    ReceivedMessage pvt { "NAV-PVT", EUbxMsg::UBX_NAV_PVT, 0x01, 0x07, payload };
+
+    UBX_NAV_PVT msg;
+    ASSERT_TRUE(msg.deserialize(frameWithPayload(pvt, payload)));
+    payload[23] = 3;
+    payload.pop_back();
+    EXPECT_FALSE(msg.deserialize(frameWithPayload(pvt, payload)));
+    EXPECT_EQ(msg.pvt().visibleSatellites, 12);
+}
+
+TEST(NavSatReject, CountLargerThanPayload)
+{
+    std::vector<uint8_t> payload(8 + 12, 0);
+    payload[5] = 2;  // numSvs claims two satellites, the payload holds one
+    ReceivedMessage sat { "NAV-SAT", EUbxMsg::UBX_NAV_SAT, 0x01, 0x35, payload };
+
+    UBX_NAV_SAT msg;
+    EXPECT_FALSE(msg.deserialize(frameWithPayload(sat, payload)));
+    EXPECT_TRUE(msg.satellites().empty());
+}
+
+TEST(NavGeofenceReject, MoreGeofencesThanSupported)
+{
+    std::vector<uint8_t> payload(8 + 5 * 2, 0);
+    payload[5] = 0x01;  // Active
+    payload[6] = 5;     // the receiver supports at most 4
+    ReceivedMessage geo { "NAV-GEOFENCE", EUbxMsg::UBX_NAV_GEOFENCE, 0x01, 0x39, payload };
+
+    UBX_NAV_GEOFENCE msg;
+    EXPECT_FALSE(msg.deserialize(frameWithPayload(geo, payload)));
 }

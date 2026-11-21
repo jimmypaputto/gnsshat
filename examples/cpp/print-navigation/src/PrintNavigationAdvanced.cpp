@@ -2,15 +2,15 @@
  * Jimmy Paputto 2025
  */
 
-#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <iomanip>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
 
-#include <signal.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -18,14 +18,6 @@
 
 
 using namespace JimmyPaputto;
-
-std::atomic<bool> running{true};
-
-void signalHandler(int signal)
-{
-    if (signal == SIGINT)
-        running = false;
-}
 
 void clearScreen()
 {
@@ -288,13 +280,29 @@ GnssConfig createDefaultConfig()
     };
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
-    signal(SIGINT, signalHandler);
-
     hideCursor();
 
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
     ubxHat->softResetUbloxSom_HotStart();
 
     clearScreen();
@@ -312,16 +320,16 @@ auto main() -> int
         return -1;
     }
 
-    while (running)
-    {
-        const auto navigation = ubxHat->waitAndGetFreshNavigation();
-        printNavigationTable(navigation, std::string(ubxHat->name()));
-    }
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
+        printNavigationTable(*navigation, std::string(ubxHat->name()));
+
+    signalsInterrupt.join();
 
     showCursor();
     clearScreen();
     printf(COLOR_RED "GNSS monitoring stopped gracefully.\n" COLOR_RESET);
-    delete ubxHat;
 
     return 0;
 }

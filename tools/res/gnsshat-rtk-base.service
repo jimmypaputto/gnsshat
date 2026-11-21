@@ -63,10 +63,11 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=
 
 # ── Device access ────────────────────────────────────────────────
-# Raspberry Pi 5 (gpiochip4). For Pi 4 change to gpiochip0.
+# char-gpiochip allows every /dev/gpiochipN (Pi 4: gpiochip0, Pi 5:
+# gpiochip4 or gpiochip0 depending on the kernel).
 DeviceAllow=/dev/spidev0.0 rw
 DeviceAllow=/dev/ttyAMA0 rw
-DeviceAllow=/dev/gpiochip4 rw
+DeviceAllow=char-gpiochip rw
 
 [Install]
 WantedBy=multi-user.target

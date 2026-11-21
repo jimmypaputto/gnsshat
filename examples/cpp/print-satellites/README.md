@@ -51,20 +51,21 @@ cmake ..
 make
 ```
 
-This creates two executables:
-- `PrintSatellitesBasic`
-- `PrintSatellitesAdvanced`
+This creates two executables (CMake targets `PrintSatellitesBasic` and
+`PrintSatellitesAdvanced`):
+- `print-satellites-basic`
+- `print-satellites-advanced`
 
 ## Usage
 
 ### Basic Satellite Display
 ```bash
-./PrintSatellitesBasic
+./print-satellites-basic
 ```
 
 ### Advanced Satellite Display
 ```bash
-./PrintSatellitesAdvanced
+./print-satellites-advanced
 ```
 
 Press `Ctrl+C` to exit either program.

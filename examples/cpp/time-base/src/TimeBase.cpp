@@ -9,7 +9,10 @@
  * a "time fix" mode (TimeOnlyFix) similar to an RTK base station.
  */
 
+#include <csignal>
 #include <cstdio>
+#include <memory>
+#include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 
@@ -96,15 +99,27 @@ GnssConfig createFixedPositionConfig_Ecef()
     };
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
-    auto* ubxHat = IGnssHat::create();
-    if (!ubxHat)
-    {
-        printf("Failed to create GNSS HAT instance\r\n");
-        return -1;
-    }
-
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
     ubxHat->softResetUbloxSom_HotStart();
     const bool isStartupDone = ubxHat->start(createSurveyInConfig());
     if (!isStartupDone)
@@ -115,9 +130,11 @@ auto main() -> int
     printf("GNSS started with time base configuration.\r\n");
     printf("Waiting for TimeOnlyFix...\r\n");
 
-    while (true)
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
     {
-        const auto pvt = ubxHat->waitAndGetFreshNavigation().pvt;
+        const auto& pvt = navigation->pvt;
         const auto time = Utils::utcTimeFromGnss_ISO8601(pvt);
         printf(
             "[%s] Fix: %s  tAcc: %d ns  Lat: %.7f  Lon: %.7f  Alt: %.2f m\r\n",
@@ -130,5 +147,6 @@ auto main() -> int
         );
     }
 
+    signalsInterrupt.join();
     return 0;
 }

@@ -15,10 +15,6 @@
 #include "UbloxConfigRegistry.hpp"
 #include "UbxParser.hpp"
 
-#include "ubxmsg/UBX_CFG_MSG.hpp"
-#include "ubxmsg/UBX_CFG_PRT.hpp"
-#include "ubxmsg/UBX_CFG_RATE.hpp"
-#include "ubxmsg/UBX_CFG_TP5.hpp"
 #include "ubxmsg/UBX_NAV_GEOFENCE.hpp"
 
 #include "common/Notifier.hpp"

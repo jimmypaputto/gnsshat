@@ -16,10 +16,6 @@ class UBX_ACK_NAK : public UBX_ACK_ACK
 public:
     explicit UBX_ACK_NAK() = default;
 
-    explicit UBX_ACK_NAK(std::span<const uint8_t> frame)
-    :	UBX_ACK_ACK(frame)
-    {}
-
     std::vector<uint8_t> serialize() const override
     {
         return buildFrame({

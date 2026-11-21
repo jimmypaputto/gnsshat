@@ -13,8 +13,8 @@
  * frames that can be forwarded to an RTK rover.
  */
 
+#include <pthread.h>
 #include <signal.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -23,17 +23,6 @@
 
 #include <jimmypaputto/GnssHat.h>
 
-
-static atomic_bool running = true;
-
-void signal_handler(int sig)
-{
-    if (sig == SIGINT)
-    {
-        printf("\n\nReceived SIGINT, shutting down gracefully...\n");
-        atomic_store(&running, false);
-    }
-}
 
 static uint16_t get_rtcm3_frame_id(const uint8_t* data, uint32_t size)
 {
@@ -144,6 +133,31 @@ jp_gnss_gnss_config_t create_fixed_position_ecef_config()
     return config;
 }
 
+static sigset_t signals;  /* SIGINT and SIGTERM */
+
+static void* wait_for_signal(void* gnss)
+{
+    int received;
+    sigwait(&signals, &received);
+    jp_gnss_hat_shutdown(gnss);
+    return NULL;
+}
+
+/* SIGINT and SIGTERM make the new thread call jp_gnss_hat_shutdown(), which
+ * ends the waits in main. */
+static bool signals_handler(jp_gnss_hat_t* gnss, pthread_t* thread)
+{
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    /* Blocks the signals in the calling thread (main); the new thread
+     * inherits the mask. Library threads block them on their own. */
+    pthread_sigmask(SIG_BLOCK, &signals, NULL);
+
+    return pthread_create(thread, NULL, wait_for_signal, gnss) == 0;
+}
+
 int main(int argc, char* argv[])
 {
     uint16_t port = 2101;
@@ -156,8 +170,6 @@ int main(int argc, char* argv[])
         else if (strcmp(argv[i], "--mountpoint") == 0 && i + 1 < argc)
             mountpoint = argv[++i];
     }
-
-    signal(SIGINT, signal_handler);
 
     jp_gnss_hat_t* gnss = jp_gnss_hat_create();
     if (!gnss)
@@ -199,13 +211,19 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    jp_gnss_navigation_t navigation;
-
-    while (atomic_load(&running))
+    pthread_t signals_interrupt;
+    if (!signals_handler(gnss, &signals_interrupt))
     {
-        if (!jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
-            continue;
+        printf("Failed to start the signal thread\r\n");
+        jp_gnss_ntrip_caster_stop(caster);
+        jp_gnss_ntrip_caster_destroy(caster);
+        jp_gnss_hat_destroy(gnss);
+        return -1;
+    }
 
+    jp_gnss_navigation_t navigation;
+    while (jp_gnss_hat_wait_and_get_fresh_navigation(gnss, &navigation))
+    {
         const char* time_str = jp_gnss_utc_time_iso8601(&navigation.pvt);
         const char* fix_type_str =
             jp_gnss_fix_type_to_string(navigation.pvt.fix_type);
@@ -221,7 +239,7 @@ int main(int argc, char* argv[])
 
             jp_gnss_rtk_corrections_t* corrections =
                 jp_gnss_rtk_get_full_corrections(gnss);
-            if (corrections)
+            if (corrections && corrections->count > 0)
             {
                 for (uint32_t i = 0; i < corrections->count; ++i)
                 {
@@ -240,11 +258,12 @@ int main(int argc, char* argv[])
                 if (clients > 0)
                     printf("[%s] Broadcasting to %u client(s)\r\n",
                         time_str, clients);
-
-                jp_gnss_rtk_corrections_free(corrections);
             }
+            jp_gnss_rtk_corrections_free(corrections);
         }
     }
+
+    pthread_join(signals_interrupt, NULL);
 
     jp_gnss_ntrip_caster_stop(caster);
     jp_gnss_ntrip_caster_destroy(caster);

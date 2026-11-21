@@ -7,41 +7,16 @@
 
 #include <vector>
 #include <cstdint>
-#include <iomanip>
-
-#include <sstream>
-#include <stdexcept>
-
-#include <unordered_map>
 
 #include "IUbxMsg.hpp"
 #include "UBX_CFG_VALSET.hpp"  // For ConfigKeyValue struct
 #include "ublox/EUbxMemoryLayer.hpp"
+#include "ublox/UbxCfgKeys.hpp"
 #include "common/Utils.hpp"
 
 
 namespace JimmyPaputto::ubxmsg
 {
-
-class ConfigKeySizeMap 
-{
-public:
-    static uint8_t getKeySize(uint32_t key) 
-    {
-        auto it = keySizes_.find(key);
-        if (it != keySizes_.end())
-            return it->second;
-
-        const std::string hexStr =
-            (std::stringstream{} << "0x" << std::hex << std::uppercase << key).str();
-        throw std::runtime_error(
-            "Unknown configuration key size for key: " +  hexStr
-        );
-    }
-
-private:
-    static std::unordered_map<uint32_t, uint8_t> keySizes_;
-};
 
 /**
  * UBX-CFG-VALGET message - Get configuration values
@@ -71,14 +46,6 @@ public:
         keys_(keys.begin(), keys.end())
     {}
 
-    /**
-     * Constructor for deserializing received message (response only)
-     * Only used by UBX parser when receiving VALGET responses from device
-     */
-    explicit UBX_CFG_VALGET(std::span<const uint8_t> frame)
-    {
-        deserialize(frame);
-    }
 
 
 
@@ -131,70 +98,48 @@ public:
         return buildFrame(frame);
     }
 
-    void deserialize(std::span<const uint8_t> frame) override
+    bool deserialize(std::span<const uint8_t> frame) override
     {
-        if (frame.size() < 10) {
-            throw std::runtime_error("Invalid frame size for UBX_CFG_VALGET");
-        }
+        // version, layer, position, then key + value pairs
+        constexpr std::size_t headerSize = 4;
+        const std::size_t length = payloadLength(frame);
+        if (length < headerSize)
+            return false;
 
-        // Parse from offset 6 (after UBX header and length)
-        version_ = frame[6];
-        layer_ = static_cast<EUbxMemoryLayer>(frame[7]);
-        position_ = static_cast<uint16_t>(frame[8] | (frame[9] << 8));
-
-        keys_.clear();
-        configData_.clear();
-        
-        // Deserialize is always called for responses containing key+value pairs
-        // Requests are sent via poll() method and don't use deserialize()
-        parseAsResponse(frame, 10);
-    }
-
-private:
-    /**
-     * Parse frame as response containing key+value pairs
-     * Only called for incoming responses, never for outgoing requests
-     */
-    void parseAsResponse(std::span<const uint8_t> frame, size_t startOffset) 
-    {
-        size_t offset = startOffset;
-        
-        while (offset + 4 <= frame.size()) {
-            // Read configuration key (4 bytes, little-endian)
-            uint32_t key = static_cast<uint32_t>(
-                frame[offset] | 
-                (frame[offset + 1] << 8) | 
-                (frame[offset + 2] << 16) | 
-                (frame[offset + 3] << 24)
-            );
+        const std::size_t end = payloadOffset + length;
+        std::vector<uint32_t> keys;
+        std::vector<ConfigKeyValue> configData;
+        std::size_t offset = payloadOffset + headerSize;
+        while (offset < end)
+        {
+            if (offset + 4 > end)
+                return false;
+            const uint32_t key = readLE<uint32_t>(frame, offset);
             offset += 4;
-            
-            // Get expected value size for this key
-            uint8_t valueSize;
-            valueSize = ConfigKeySizeMap::getKeySize(key);
 
-            
-            // Check if we have enough bytes for the value
-            if (offset + valueSize > frame.size()) {
-                throw std::runtime_error("Insufficient data for config key value");
-            }
-            
-            // Read value bytes
-            std::vector<uint8_t> value(frame.begin() + offset, 
-                                     frame.begin() + offset + valueSize);
+            // The value size is encoded in the key ID; with a reserved size
+            // code the next key cannot be found.
+            const uint8_t valueSize = UbxCfgKeys::keySize(key);
+            if (valueSize == 0 || offset + valueSize > end)
+                return false;
+
+            configData.push_back({
+                key,
+                std::vector<uint8_t>(frame.begin() + offset,
+                    frame.begin() + offset + valueSize)
+            });
+            keys.push_back(key);
             offset += valueSize;
-            
-            // Store key+value pair
-            configData_.push_back({key, value});
-            keys_.push_back(key);  // Also add to keys for compatibility
         }
-        
-        if (configData_.empty()) {
-            throw std::runtime_error("No valid key+value pairs found in response");
-        }
+
+        version_ = frame[payloadOffset];
+        layer_ = static_cast<EUbxMemoryLayer>(frame[payloadOffset + 1]);
+        position_ = readLE<uint16_t>(frame, payloadOffset + 2);
+        keys_ = std::move(keys);
+        configData_ = std::move(configData);
+        return true;
     }
 
-public:
     // Getters
     inline uint8_t version() const { return version_; }
     inline EUbxMemoryLayer layer() const { return layer_; }
@@ -215,26 +160,6 @@ public:
             }
         }
         return {};  // Empty if not found
-    }
-
-    /**
-     * Get configuration value as specific type (for responses only)
-     * @param key Configuration key ID
-     * @return Typed value
-     */
-    template<typename T>
-    T getConfigValueAs(uint32_t key) const 
-    {
-        auto value = getConfigValue(key);
-        if (value.empty() || value.size() != sizeof(T)) {
-            throw std::runtime_error("Invalid value size for config key");
-        }
-        
-        T result = 0;
-        for (size_t i = 0; i < sizeof(T); ++i) {
-            result |= (static_cast<T>(value[i]) << (i * 8));
-        }
-        return result;
     }
 
 private:

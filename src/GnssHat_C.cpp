@@ -125,10 +125,6 @@ static_assert(static_cast<int>(ETimeMarkTimeBase::ReceiverTime) == JP_GNSS_TIME_
 static_assert(static_cast<int>(ETimeMarkTimeBase::GnssTime) == JP_GNSS_TIME_MARK_TIME_BASE_GNSS);
 static_assert(static_cast<int>(ETimeMarkTimeBase::UTC) == JP_GNSS_TIME_MARK_TIME_BASE_UTC);
 
-static_assert(static_cast<int>(ETimeMarkTriggerEdge::Rising) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_RISING);
-static_assert(static_cast<int>(ETimeMarkTriggerEdge::Falling) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_FALLING);
-static_assert(static_cast<int>(ETimeMarkTriggerEdge::Toggle) == JP_GNSS_TIME_MARK_TRIGGER_EDGE_TOGGLE);
-
 namespace
 {
 
@@ -625,16 +621,17 @@ extern "C"
 
 jp_gnss_hat_t* jp_gnss_hat_create()
 {
-    try
-    {
-        auto* wrapper = new jp_gnss_hat;
-        wrapper->instance = IGnssHat::create();
-        return wrapper;
-    }
-    catch (...)
-    {
-        return nullptr;
-    }
+    auto* wrapper = new jp_gnss_hat;
+    wrapper->instance = IGnssHat::create();
+    return wrapper;
+}
+
+void jp_gnss_hat_shutdown(jp_gnss_hat_t* hat)
+{
+    if (!hat || !hat->instance)
+        return;
+
+    hat->instance->shutdown();
 }
 
 void jp_gnss_hat_destroy(jp_gnss_hat_t* hat)
@@ -675,8 +672,12 @@ bool jp_gnss_hat_wait_and_get_fresh_navigation(jp_gnss_hat_t* hat,
     if (!hat->instance)
         return false;
 
-    *navigation =
-        convert_navigation(hat->instance->waitAndGetFreshNavigation());
+    const auto fresh =
+        hat->instance->waitAndGetFreshNavigation();
+    if (!fresh)
+        return false;
+
+    *navigation = convert_navigation(*fresh);
     return true;
 }
 
@@ -945,7 +946,7 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
 
     config->measurement_rate_hz = 1;
     config->dynamic_model = JP_GNSS_DYNAMIC_MODEL_PORTABLE;
-    config->timepulse_pin_config.active = true;
+    config->timepulse_pin_config.active = false;
     config->timepulse_pin_config.fixed_pulse.frequency = 1;
     config->timepulse_pin_config.fixed_pulse.pulse_width = 0.1f;
     config->timepulse_pin_config.has_pulse_when_no_fix = false;
@@ -962,15 +963,32 @@ void jp_gnss_gnss_config_init(jp_gnss_gnss_config_t* config)
     config->save_to_flash = false;
 }
 
-void jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
+bool jp_gnss_hat_timepulse(jp_gnss_hat_t* hat)
 {
-    if (!hat)
-        return;
+    if (!hat || !hat->instance)
+        return false;
 
-    if (!hat->instance)
-        return;
+    return hat->instance->timepulse();
+}
 
-    hat->instance->timepulse();
+jp_gnss_wait_result_t jp_gnss_hat_wait_for_event(jp_gnss_hat_t* hat,
+    jp_gnss_hat_event_t event, uint32_t timeout_ms)
+{
+    if (!hat || !hat->instance)
+        return JP_GNSS_WAIT_STOPPED;
+
+    const auto hatEvent =
+        event == JP_GNSS_HAT_EVENT_NAVIGATION ? EHatEvent::Navigation
+        : event == JP_GNSS_HAT_EVENT_TIME_MARK ? EHatEvent::TimeMark
+        : EHatEvent::Timepulse;
+    switch (hat->instance->waitForEvent(
+        hatEvent, std::chrono::milliseconds(timeout_ms)))
+    {
+        case EWaitResult::Ready:   return JP_GNSS_WAIT_READY;
+        case EWaitResult::Timeout: return JP_GNSS_WAIT_TIMEOUT;
+        case EWaitResult::Stopped: return JP_GNSS_WAIT_STOPPED;
+    }
+    return JP_GNSS_WAIT_STOPPED;
 }
 
 const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
@@ -981,8 +999,7 @@ const char* jp_gnss_hat_name(jp_gnss_hat_t* hat)
     return hat->instance->name().data();
 }
 
-jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
-    jp_gnss_hat_t* hat)
+static IBase* rtkBase(jp_gnss_hat_t* hat)
 {
     if (!hat || !hat->instance)
         return nullptr;
@@ -991,19 +1008,21 @@ jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     if (!rtk)
         return nullptr;
 
-    IBase* base = rtk->base();
-    if (!base)
-        return nullptr;
+    return rtk->base();
+}
 
-    auto cpp_corrections = base->getFullCorrections();
-    if (cpp_corrections.empty())
-        return nullptr;
-
+static jp_gnss_rtk_corrections_t* toCCorrections(
+    const std::vector<std::vector<uint8_t>>& cpp_corrections)
+{
     auto* result = new (std::nothrow) jp_gnss_rtk_corrections_t;
     if (!result)
         return nullptr;
 
     result->count = static_cast<uint32_t>(cpp_corrections.size());
+    result->frames = nullptr;
+    if (result->count == 0)
+        return result;
+
     result->frames =
         new (std::nothrow) jp_gnss_rtcm3_frame_t[result->count];
     if (!result->frames)
@@ -1033,56 +1052,24 @@ jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     return result;
 }
 
-jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_full_corrections(
     jp_gnss_hat_t* hat)
 {
-    if (!hat || !hat->instance)
-        return nullptr;
-
-    IRtk* rtk = hat->instance->rtk();
-    if (!rtk)
-        return nullptr;
-
-    IBase* base = rtk->base();
+    IBase* base = rtkBase(hat);
     if (!base)
         return nullptr;
 
-    auto cpp_corrections = base->getTinyCorrections();
-    if (cpp_corrections.empty())
+    return toCCorrections(base->getFullCorrections());
+}
+
+jp_gnss_rtk_corrections_t* jp_gnss_rtk_get_tiny_corrections(
+    jp_gnss_hat_t* hat)
+{
+    IBase* base = rtkBase(hat);
+    if (!base)
         return nullptr;
 
-    auto* result = new (std::nothrow) jp_gnss_rtk_corrections_t;
-    if (!result)
-        return nullptr;
-
-    result->count = static_cast<uint32_t>(cpp_corrections.size());
-    result->frames =
-        new (std::nothrow) jp_gnss_rtcm3_frame_t[result->count];
-    if (!result->frames)
-    {
-        delete result;
-        return nullptr;
-    }
-
-    for (uint32_t i = 0; i < result->count; ++i)
-    {
-        result->frames[i].size =
-            static_cast<uint32_t>(cpp_corrections[i].size());
-        result->frames[i].data =
-            new (std::nothrow) uint8_t[result->frames[i].size];
-        if (!result->frames[i].data)
-        {
-            for (uint32_t j = 0; j < i; ++j)
-                delete[] result->frames[j].data;
-            delete[] result->frames;
-            delete result;
-            return nullptr;
-        }
-        std::memcpy(result->frames[i].data, cpp_corrections[i].data(),
-            result->frames[i].size);
-    }
-
-    return result;
+    return toCCorrections(base->getTinyCorrections());
 }
 
 jp_gnss_rtcm3_frame_t* jp_gnss_rtk_get_rtcm3_frame(jp_gnss_hat_t* hat,
@@ -1208,35 +1195,13 @@ bool jp_gnss_hat_wait_and_get_fresh_time_mark(jp_gnss_hat_t* hat,
     if (!hat || !time_mark || !hat->instance)
         return false;
 
-    *time_mark = convert_time_mark(
-        hat->instance->waitAndGetFreshTimeMark());
-    return true;
-}
-
-bool jp_gnss_hat_enable_time_mark_trigger(jp_gnss_hat_t* hat)
-{
-    if (!hat || !hat->instance)
+    const auto fresh =
+        hat->instance->waitAndGetFreshTimeMark();
+    if (!fresh)
         return false;
 
-    return hat->instance->enableTimeMarkTrigger();
-}
-
-void jp_gnss_hat_disable_time_mark_trigger(jp_gnss_hat_t* hat)
-{
-    if (!hat || !hat->instance)
-        return;
-
-    hat->instance->disableTimeMarkTrigger();
-}
-
-void jp_gnss_hat_trigger_time_mark(jp_gnss_hat_t* hat,
-    jp_gnss_time_mark_trigger_edge_t edge)
-{
-    if (!hat || !hat->instance)
-        return;
-
-    hat->instance->triggerTimeMark(
-        static_cast<ETimeMarkTriggerEdge>(edge));
+    *time_mark = convert_time_mark(*fresh);
+    return true;
 }
 
 const char* jp_gnss_time_mark_mode_to_string(

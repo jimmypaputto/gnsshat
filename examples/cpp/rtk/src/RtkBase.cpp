@@ -7,19 +7,13 @@
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <thread>
 
 #include <jimmypaputto/GnssHat.hpp>
 #include <jimmypaputto/ntrip/NtripCaster.hpp>
 
 using namespace JimmyPaputto;
-
-static std::atomic<bool> g_running{true};
-
-static void signalHandler(int)
-{
-    g_running = false;
-}
 
 
 uint16_t getFrameId(const std::vector<uint8_t>& frame)
@@ -127,6 +121,24 @@ void printFrame(const std::vector<uint8_t>& frame, const std::string& time)
     printf("\r\n");
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main(int argc, char* argv[]) -> int
 {
     uint16_t port = 2101;
@@ -140,15 +152,7 @@ auto main(int argc, char* argv[]) -> int
             mountpoint = argv[++i];
     }
 
-    std::signal(SIGINT,  signalHandler);
-    std::signal(SIGTERM, signalHandler);
-
-    auto* ubxHat = IGnssHat::create();
-    if (!ubxHat)
-    {
-        printf("Failed to create GNSS HAT instance\r\n");
-        return -1;
-    }
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
 
     // ubxHat->softResetUbloxSom_HotStart();
     ubxHat->hardResetUbloxSom_ColdStart();
@@ -167,9 +171,11 @@ auto main(int argc, char* argv[]) -> int
         return -1;
     }
 
-    while (g_running)
+    auto signalsInterrupt = signalsHandler(*ubxHat);
+
+    while (const auto navigation = ubxHat->waitAndGetFreshNavigation())
     {
-        const auto pvt = ubxHat->waitAndGetFreshNavigation().pvt;
+        const auto& pvt = navigation->pvt;
         const auto fixStatus = pvt.fixType;
         const auto time = Utils::utcTimeFromGnss_ISO8601(pvt);
         if (fixStatus != EFixType::TimeOnlyFix)
@@ -204,6 +210,7 @@ auto main(int argc, char* argv[]) -> int
         }
     }
 
+    signalsInterrupt.join();
     caster.stop();
     return 0;
 }

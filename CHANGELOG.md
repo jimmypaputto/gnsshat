@@ -7,6 +7,172 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-21
+
+### Added
+- The C++ waits take an optional `std::stop_token`, which ends only that wait
+  and leaves the HAT usable, for worker threads and ROS 2 lifecycle nodes
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- `shutdown()` (C `jp_gnss_hat_shutdown()`, Python `shutdown()`) stops every
+  wait and gpsd forwarding of a HAT for good, so worker loops end and can be
+  joined before the HAT is deleted. It is thread-safe but not
+  async-signal-safe: call it from a thread waiting in `sigwait()`
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- `waitForEvent()` (C `jp_gnss_hat_wait_for_event()`) waits for the next epoch,
+  time mark or timepulse for at most a given time, for code with work to do
+  between waits. The result tells a timeout apart from a wait that is over
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Python `GnssHat.close()` and `GnssHat.closed`, so the HAT can be released
+  without a `with` block. Leaving a `with` block calls `close()`
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+
+### Changed
+- **Breaking:** `waitAndGetFreshNavigation()` and `waitAndGetFreshTimeMark()`
+  return `std::optional` and `timepulse()` returns `bool`, because a stopped
+  wait handed back empty data that looked real. They return `std::nullopt` /
+  `false` once stopped, and on HATs without the time mark input or with the
+  timepulse disabled; the C waits and Python follow with `false` / `None`
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- `start()` on the RTK HAT now fails when `rtk.mode` is `Rover` and
+  `rtk.base` is set, because the base config was silently ignored. Leave
+  `rtk.base` unset for a rover
+  ([#46](https://github.com/jimmypaputto/gnsshat/pull/46))
+- `rtk_get_full_corrections()` / `rtk_get_tiny_corrections()` in Python
+  raised `RuntimeError` while the base had no data yet, and the C functions
+  returned `NULL` for that case too. They now return `[]` / `count == 0`, and
+  fail only when the HAT is not an RTK base
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Python `start()` raised `RuntimeError` instead of returning `False` when the
+  library rejected the config or startup failed, unlike the C/C++ API. It now
+  returns `False`; malformed config dicts still raise `TypeError` / `ValueError`
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- `jp_gnss_gnss_config_init()` enabled the timepulse while Python left it off
+  and `TimepulsePinConfig::active` in C++ had no default. All three now keep
+  the timepulse disabled unless it is explicitly activated
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Python methods on a closed `GnssHat` now raise `RuntimeError("GnssHat is
+  closed")` instead of "GNSS HAT not initialized", and calling `__init__()` on
+  an initialized object raises instead of opening the HAT a second time
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+
+### Fixed
+- `start()` threw `Unknown configuration key size` for the navigation filters
+  `fixMode`, `pdopMask_x10`, `tdopMask_x10`, `pAccMask_m` and `tAccMask_m`
+  (and their C / Python equivalents), because their sizes were missing from
+  the UBX-CFG-VALGET key table used to verify the written configuration. The
+  table is gone: the value size is now read from the key ID, so a key added
+  later cannot hit this again
+- `start()` threw `std::runtime_error` when the TX-READY GPIO line could not
+  be requested, and other GPIO failures (e.g. a gpiochip that cannot be
+  opened) terminated the process, also in `enableTimepulse()`. Both now return
+  `false` with the reason on stderr
+  ([#52](https://github.com/jimmypaputto/gnsshat/pull/52))
+- A UBX frame with a valid checksum but a payload too short for its message
+  was read past its end (navigation, RF and geofencing data), and for
+  UBX-CFG-VALGET threw out of `start()` or terminated the process from the
+  receive thread. Such frames are now dropped
+  ([#52](https://github.com/jimmypaputto/gnsshat/pull/52))
+- `GnssConfig::rtk` was never validated: `Base` mode without `rtk.base`
+  configured the module as a rover, invalid base parameters were accepted and
+  `rtk` on the L1 GNSS HAT was ignored. `start()` now rejects these configs
+  with a message on stderr and leaves `rtk()` null after a failed start
+  ([#46](https://github.com/jimmypaputto/gnsshat/pull/46))
+- Projects using gnsshat through `add_subdirectory()` or `FetchContent` could
+  not find `<jimmypaputto/...>` headers, or silently took them from a
+  system-wide install, unless `BUILD_EXAMPLES` was on. The build tree now
+  always provides the installed `include/jimmypaputto` layout
+- Building on a Raspberry Pi Compute Module 5 stopped with "Unsupported
+  platform", because the platform auto-detection only knew the Raspberry Pi 4
+  and 5 model names. A Compute Module 5 is now built as a Raspberry Pi 5
+  ([#51](https://github.com/jimmypaputto/gnsshat/pull/51))
+- Python `get_gpsd_device_path()` returned `''` instead of the documented
+  `None` when gpsd forwarding was not running, because the C wrapper passes an
+  empty string. The empty path is now mapped to `None`
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Deleting a HAT (`delete`, `jp_gnss_hat_destroy()`) while another thread was
+  blocked in `waitAndGetFresh*()`, `timepulse()` or `joinForwardForGpsd()`
+  destroyed the object under that thread, and `timepulse()` could not be woken
+  at all. Deletion now wakes these calls and waits for them to return
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- `stopForwardForGpsd()` and status reads could race with
+  `joinForwardForGpsd()`. Forwarder ownership is now mutex-protected and
+  status uses an atomic flag independent of the join; only one concurrent
+  joiner is supported
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Leaving a Python `with GnssHat()` block while another thread was blocked in
+  `wait_and_get_fresh_*()`, `timepulse()` or `join_forward_for_gpsd()` freed
+  the HAT under that thread. `close()` now ends those waits with `None` /
+  `False` and waits for running calls before releasing the HAT
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- The "Unknown HAT" message printed before `IGnssHat::create()` terminates
+  the process was lost whenever stdout was not a terminal (systemd, Docker,
+  ROS launch), because it was buffered. It now goes to stderr and names the
+  detected product
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Ctrl+C did not end a Python `wait_and_get_fresh_*()`, `timepulse()` or
+  `join_forward_for_gpsd()` until the next event, and never without data,
+  because Python signal handlers run only between bytecodes. These calls now
+  run them while they wait, so `KeyboardInterrupt` ends them within 100 ms
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Python calls that can block, such as `start()` and the resets, held the GIL
+  and froze every other Python thread. They now release it
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- Leaving the `with` block of a Python NTRIP class could hang when a thread was
+  logging through a Python callback, because the threads were joined with the
+  GIL held. They are now joined without it
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- `enableTimepulse()` terminated the process when GPIO 5 was taken, e.g. by the
+  kernel PPS driver, although it returns `bool` and Python documents a
+  `RuntimeError`. It now returns `false`, and Python raises
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- With `FallingEdgeAtTopOfSecond`, `timepulse()` returned at the end of the
+  pulse instead of at the top of the second, because the library always
+  listened for the rising edge. It now listens for the edge the configured
+  polarity puts at the top of the second
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- With the timepulse enabled, its interrupt thread kept one CPU core busy,
+  because it polled the GPIO line with a zero timeout that returns at once.
+  It now blocks on the line for up to 100 ms per wait
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- A signal handled by the application, e.g. SIGINT or SIGTERM, could run in a
+  library thread and interrupt its blocking I/O, which then failed like a
+  device error. Threads started by the library now block all asynchronous
+  signals, so signals reach only the application's threads
+  ([#48](https://github.com/jimmypaputto/gnsshat/pull/48))
+- The C and C++ `timepulse-interrupt` examples spun printing "Timepulse not
+  enabled", because they never called `enableTimepulse()`. They now enable the
+  timepulse interrupt after `start()` and exit if that fails
+  ([#47](https://github.com/jimmypaputto/gnsshat/pull/47))
+- `examples/python/ntrip_server.py` never configured the receiver and always
+  exited with "Failed to connect", because it skipped `start()` and misread
+  `NtripServer.connect()`. It now starts the HAT as a base and checks
+  `connect()` for an exception instead of its return value
+  ([#47](https://github.com/jimmypaputto/gnsshat/pull/47))
+- `examples/python/config_from_json.py` could not find `res/config.json` when
+  run from outside `examples/python`. Relative paths are now also looked up
+  next to the script
+  ([#47](https://github.com/jimmypaputto/gnsshat/pull/47))
+- `gnsshat-rtk-base.service` only allowed `/dev/gpiochip4`, so on a Pi 4 the
+  service had no GPIO access. The unit now allows `char-gpiochip`, which
+  covers every Raspberry Pi model and kernel
+  ([#47](https://github.com/jimmypaputto/gnsshat/pull/47))
+- `gnsshat-rtk-base` silently ran without TLS when `[ntrip.tls]` was enabled
+  but the build lacked `NTRIP_TLS_SUPPORT`, the caster certificate was not set
+  or could not be loaded. It now exits with code 78 (EX_CONFIG) instead
+  ([#47](https://github.com/jimmypaputto/gnsshat/pull/47))
+
+### Removed
+- **Breaking:** `enableTimeMarkTrigger()`, `disableTimeMarkTrigger()`,
+  `triggerTimeMark()` and `ETimeMarkTriggerEdge`, with their C
+  (`jp_gnss_hat_*_time_mark_trigger()`, `jp_gnss_hat_trigger_time_mark()`,
+  `jp_gnss_time_mark_trigger_edge_t`) and Python
+  (`enable_time_mark_trigger()`, `disable_time_mark_trigger()`,
+  `trigger_time_mark()`, `TimeMarkTriggerEdge`) counterparts. They drove
+  EXTINT from GPIO 17, but on the TIME HAT EXTINT is an external input that
+  is not connected to the Raspberry Pi GPIO. Time marks still come through
+  `timeMark()` / `waitAndGetFreshTimeMark()`
+  ([#50](https://github.com/jimmypaputto/gnsshat/pull/50))
+
 ## [1.2.0] - 2026-10-16
 
 ### Added

@@ -2,23 +2,15 @@
  * Jimmy Paputto 2026
  */
 
-#include <atomic>
+#include <csignal>
 #include <cstdio>
+#include <memory>
 #include <thread>
-
-#include <signal.h>
 
 #include <jimmypaputto/GnssHat.hpp>
 
 
 using namespace JimmyPaputto;
-
-std::atomic<bool> running{true};
-
-void signalHandler(int)
-{
-    running = false;
-}
 
 const char* timeBase2string(ETimeMarkTimeBase tb)
 {
@@ -90,55 +82,45 @@ GnssConfig createConfig()
     };
 }
 
+std::thread signalsHandler(IGnssHat& ubxHat)
+{
+    sigset_t signals;
+    sigemptyset(&signals);
+    sigaddset(&signals, SIGINT);
+    sigaddset(&signals, SIGTERM);
+
+    // Blocks the signals in the calling thread (main); the new thread
+    // inherits the mask. Library threads block them on their own.
+    pthread_sigmask(SIG_BLOCK, &signals, nullptr);
+
+    return std::thread([&ubxHat, signals] {
+        int s;
+        sigwait(&signals, &s);
+        ubxHat.shutdown();
+    });
+}
+
 auto main() -> int
 {
-    signal(SIGINT, signalHandler);
-
-    auto* ubxHat = IGnssHat::create();
+    std::unique_ptr<IGnssHat> ubxHat(IGnssHat::create());
     ubxHat->softResetUbloxSom_HotStart();
 
     const bool isStartupDone = ubxHat->start(createConfig());
     if (!isStartupDone)
     {
         printf("Startup failed, exit\r\n");
-        delete ubxHat;
         return -1;
     }
     printf("Startup done, ublox configured\r\n");
+    printf("Waiting for edges on the HAT's external EXTINT input\r\n\r\n");
 
-    ubxHat->enableTimeMarkTrigger();
-    printf("TimeMark trigger enabled, toggling EXTINT every 5s\r\n\r\n");
+    auto signalsInterrupt = signalsHandler(*ubxHat);
 
-    std::thread toggleThread([ubxHat]() {
-        while (running.load())
-        {
-            ubxHat->triggerTimeMark();
-            printf("[EXTINT] toggled\r\n");
+    while (const auto timeMark = ubxHat->waitAndGetFreshTimeMark())
+        printTimeMark(*timeMark);
 
-            for (int i = 0; i < 50 && running.load(); ++i)
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-    });
-
-    std::thread timeMarkThread([ubxHat]() {
-        while (running.load())
-        {
-            const auto tm = ubxHat->waitAndGetFreshTimeMark();
-            if (!running.load())
-                return;
-            printTimeMark(tm);
-        }
-    });
-
-    while (running.load())
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    ubxHat->disableTimeMarkTrigger();
-    delete ubxHat;
+    signalsInterrupt.join();
 
     printf("Exiting...\r\n");
-    toggleThread.join();
-    timeMarkThread.join();
-
     return 0;
 }
