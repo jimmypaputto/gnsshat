@@ -851,6 +851,15 @@
                                             <option value="1">Fixed Position</option>
                                         </select>
                                     </div>
+                                    {% if mode == 'ros2' %}
+                                    <div class="cfg-row">
+                                        <label for="cfg-rtk-corrections">Corrections</label>
+                                        <select id="cfg-rtk-corrections" class="cfg-input">
+                                            <option value="full" selected>Full (MSM7)</option>
+                                            <option value="tiny">Tiny (MSM4)</option>
+                                        </select>
+                                    </div>
+                                    {% endif %}
                                     <!-- Survey-In -->
                                     <div id="cfg-rtk-si-details">
                                         <div class="cfg-row">
@@ -1009,12 +1018,6 @@
                                 <label>
                                     <input type="checkbox" id="cfg-ros2-stdtopics" checked class="cfg-checkbox">
                                     Publish Standard Topics
-                                </label>
-                            </div>
-                            <div class="cfg-row">
-                                <label>
-                                    <input type="checkbox" id="cfg-ros2-ntrip" class="cfg-checkbox">
-                                    Use NTRIP RTCM
                                 </label>
                             </div>
                             <div class="cfg-row">
