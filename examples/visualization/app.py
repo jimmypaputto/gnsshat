@@ -3013,7 +3013,10 @@ if __name__ == '__main__':
         # from the UI every 1.5 s).
         socketio.start_background_task(_ntrip_tick_loop)
 
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+        # Without a terminal on stdin (systemd, Docker without a TTY) Flask-SocketIO
+        # refuses to start the Werkzeug server in threading mode unless allowed.
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False,
+                     allow_unsafe_werkzeug=True)
         
     except KeyboardInterrupt:
         print("\n\nShutdown requested...")

@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   as Stationary, a falling-edge timepulse as rising, a zero pulse width as 0.1
   and geofence confidence "none" as 99.7%. These fields now keep a valid 0 and
   fall back to the default only when empty
+- Visualization app: failed to start without a terminal on stdin (systemd,
+  Docker without a TTY), because Flask-SocketIO refused to run the Werkzeug
+  server. The app now allows it explicitly
 - A UBX header with a corrupted length field could stop the receive thread
   from reading the module for good: once the claimed frame no longer fit the
   8 KB receive buffer, the thread spun at 100% CPU and navigation froze until
