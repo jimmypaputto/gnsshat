@@ -105,7 +105,7 @@ After startup, the server listens on port **5000**:
 | **Altitude** | One-axis vertical tape altimeter showing Δ altitude relative to a reference. MSL / WGS84 source toggle (origin is preserved across conversions). Same zoom controls and 1 cm grid as the Relative Map, up to ±100 m. |
 | **Terrain Map** | OpenStreetMap (Leaflet) — real-time position on a terrain map. |
 | **Sky View** | Polar sky plot with satellites (elevation/azimuth), color-coded by constellation (GPS, Galileo, GLONASS, BeiDou, SBAS, QZSS). Includes a table of tracked satellites. Available in `native` and `ros2` modes. |
-| **RF Analyzer** | Live spectrum (MON-SPAN) plus RF status (MON-RF): jamming, AGC, noise per band. Available in `native` and `ros2` modes. |
+| **RF Analyzer** | Live spectrum (MON-SPAN) plus RF status (MON-RF): jamming, AGC, noise per band. Available in `native` and `ros2` modes (the spectrum needs a `jp_gnss_hat` build with `Navigation.rf_spectrum`). |
 
 Every chart has a light / dark theme toggle (🌙 / ☀️) in its toolbar; the
 choice is persisted per-chart in `localStorage`. Dark is the default.
@@ -129,8 +129,8 @@ The **Configuration** tab allows reading and changing the GNSS module configurat
 - **Dynamic Model** — dynamic model (Stationary, Pedestrian, Automotive, Sea, Airborne, Bike, E-Scooter, …)
 - **Timepulse Pin** — PPS pulse configuration (frequency, pulse width, polarity, no-fix mode)
 - **Geofencing** — define geofence zones (lat/lon/radius, confidence level)
-- **RTK** — RTK mode (Base/Rover), base configuration (Survey-In or Fixed Position ECEF/LLA)
-- **ROS 2** — ROS-specific options: publish standard topics, use NTRIP RTCM *(ros2 only)*
+- **RTK** — RTK mode (Base/Rover), base configuration (Survey-In or Fixed Position ECEF/LLA); in `ros2` mode also the corrections set the base publishes (Full MSM7 / Tiny MSM4)
+- **ROS 2** — ROS-specific options: publish standard topics, save to the node's YAML *(ros2 only)*. NTRIP of the node is set only in its YAML (`rtk.ntrip`)
 
 Buttons:
 - **📥 Load Config** — reads the current configuration from the module/node

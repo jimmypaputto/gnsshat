@@ -280,6 +280,16 @@ KNOWN_HAT_NAMES = frozenset({
     'L1/L5 GNSS RTK HAT',
 })
 
+# CFG-NAVSPG navigation filter keys. The same names are used by the gnsshat
+# Python API, the frontend JSON and jp_gnss_hat/msg/NavigationFilters.
+NAV_FILTER_KEYS = (
+    'min_svs', 'max_svs', 'min_cno_dbhz',
+    'min_elev_deg', 'n_cno_thrs', 'cno_thrs_dbhz',
+    'fix_mode',
+    'pdop_mask_x10', 'tdop_mask_x10',
+    'p_acc_mask_m', 't_acc_mask_m',
+)
+
 # Global state
 gps_state = {
     'serial_port': None,
@@ -1616,12 +1626,13 @@ def ros2_nav_to_full_data(nav_msg):
     jamming_map = {0: "Unknown", 1: "OK", 2: "Warning", 3: "Critical"}
     antenna_status_map = {0: "Init", 1: "Unknown", 2: "OK", 3: "Short", 4: "Open"}
     antenna_power_map = {0: "Off", 1: "On", 2: "Unknown"}
-    band_map = {0: "L1", 1: "L2/L5"}
+    # rf.band is the RF block index; the band itself is in gnss_band
+    band_map = {0: "UNKNOWN", 1: "L1", 2: "L2", 3: "L3", 4: "L5", 0xF1: "L2/L5"}
 
     rf_blocks_data = []
     for rf in nav_msg.rf_blocks:
         rf_blocks_data.append({
-            'band': band_map.get(rf.band, "Unknown"),
+            'band': band_map.get(rf.gnss_band, "Unknown"),
             'jamming_state': jamming_map.get(rf.jamming_state, "Unknown"),
             'antenna_status': antenna_status_map.get(rf.antenna_status, "Unknown"),
             'antenna_power': antenna_power_map.get(rf.antenna_power, "Unknown"),
@@ -1649,13 +1660,27 @@ def ros2_nav_to_full_data(nav_msg):
             'healthy': bool(sat.healthy),
         })
 
-    return {
+    result = {
         'dop': dop_data,
         'geofencing': geofencing_data,
         'rf_blocks': rf_blocks_data,
         'satellites': satellites_data,
-        'spectrum': [],
     }
+
+    # The node sets rf_spectrum only in the message right after a new
+    # MON-SPAN. Leave 'spectrum' out otherwise so the chart keeps the last one.
+    spectrum_data = [{
+        'id': int(spec.id),
+        'data': list(spec.data),
+        'span': int(spec.span),
+        'resolution': int(spec.resolution),
+        'center_freq': int(spec.center_freq),
+        'gain': int(spec.gain),
+    } for spec in getattr(nav_msg, 'rf_spectrum', ())]
+    if spectrum_data:
+        result['spectrum'] = spectrum_data
+
+    return result
 
 
 def ros2_config_msg_to_json(config_msg):
@@ -1736,13 +1761,20 @@ def ros2_config_msg_to_json(config_msg):
                         'position_accuracy_m': float(config_msg.rtk_position_accuracy_m),
                     },
                 }
+            # Corrections set the base publishes: 0=full (MSM7), 1=tiny (MSM4)
+            rtk['base']['corrections'] = (
+                'tiny' if int(config_msg.rtk_corrections) == 1 else 'full')
         result['rtk'] = rtk
     else:
         result['rtk'] = None
 
+    nf = config_msg.navigation_filters
+    filters = {k: int(getattr(nf, k))
+               for k in NAV_FILTER_KEYS if getattr(nf, f'has_{k}')}
+    result['navigation_filters'] = filters or None
+
     # ROS 2 specific fields
     result['publish_standard_topics'] = bool(config_msg.publish_standard_topics)
-    result['use_ntrip_rtcm'] = bool(config_msg.use_ntrip_rtcm)
     result['save_to_flash'] = bool(config_msg.save_to_flash)
 
     return result
@@ -1796,6 +1828,7 @@ def json_to_ros2_config_msg(data):
         msg.rtk_mode = int(rtk['mode'])
         base = rtk.get('base')
         if base and base.get('base_mode') is not None:
+            msg.rtk_corrections = 1 if base.get('corrections') == 'tiny' else 0
             base_mode = int(base['base_mode'])
             if base_mode == 0:  # Survey-In
                 msg.rtk_base_type = 0
@@ -1821,9 +1854,18 @@ def json_to_ros2_config_msg(data):
     else:
         msg.rtk_enabled = False
 
+    # Navigation filters: a filter is applied only when its has_* flag is set,
+    # the others keep the receiver default.
+    nf_data = data.get('navigation_filters')
+    if isinstance(nf_data, dict):
+        for k in NAV_FILTER_KEYS:
+            v = nf_data.get(k)
+            if v is not None:
+                setattr(msg.navigation_filters, f'has_{k}', True)
+                setattr(msg.navigation_filters, k, int(v))
+
     # ROS 2 specific fields
     msg.publish_standard_topics = bool(data.get('publish_standard_topics', True))
-    msg.use_ntrip_rtcm = bool(data.get('use_ntrip_rtcm', False))
     msg.save_to_flash = bool(data.get('save_to_flash', False))
 
     return msg
@@ -1842,6 +1884,14 @@ def ros2_reader_thread():
     from jp_gnss_hat.msg import Navigation as NavigationMsg
 
     node = RclpyNode('jp_gnss_hat_viz')
+
+    # Same pacing as native mode: GPS frames go to the browser at about
+    # UI_MAX_HZ and RF status once per second. The spectrum comes only in the
+    # message after a new MON-SPAN, so a frame carrying it is always sent.
+    # DDS delivery jitters more than the native reader, hence the wider slack
+    # below: a 10 Hz node must still get every frame through.
+    UI_MAX_HZ = 10.0
+    pacing = {'last_emit': 0.0, 'last_rf': 0.0}
 
     def nav_callback(nav_msg):
         try:
@@ -1862,8 +1912,17 @@ def ros2_reader_thread():
             except Exception as e:
                 print(f"Error serializing extra nav data: {e}")
 
+            now = time.monotonic()
+            if now - pacing['last_rf'] >= 1.0:
+                pacing['last_rf'] = now
+            else:
+                data.pop('rf_blocks', None)
+
             gps_state['current_data'] = data
-            _safe_emit('gps_update', data, namespace='/')
+            if ('rf_blocks' in data or 'spectrum' in data
+                    or now - pacing['last_emit'] >= 0.75 / UI_MAX_HZ):
+                pacing['last_emit'] = now
+                _safe_emit('gps_update', data, namespace='/')
 
         except Exception as e:
             print(f"Error in ROS 2 nav callback: {e}")
@@ -2548,15 +2607,8 @@ def json_to_native_config(data):
     # existing value untouched.
     nf_data = data.get('navigation_filters')
     if isinstance(nf_data, dict):
-        nf_keys = (
-            'min_svs', 'max_svs', 'min_cno_dbhz',
-            'min_elev_deg', 'n_cno_thrs', 'cno_thrs_dbhz',
-            'fix_mode',
-            'pdop_mask_x10', 'tdop_mask_x10',
-            'p_acc_mask_m', 't_acc_mask_m',
-        )
         nf_cfg = {}
-        for k in nf_keys:
+        for k in NAV_FILTER_KEYS:
             v = nf_data.get(k)
             if v is not None:
                 nf_cfg[k] = int(v)
