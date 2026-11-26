@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   navigation filters and the RTK base corrections set. It now follows the
   current `jp_gnss_hat` interfaces, shows the RF spectrum and labels RF bands
   the same way as `native` mode
+- Visualization app: the configuration form sent the Portable dynamic model
+  as Stationary, a falling-edge timepulse as rising, a zero pulse width as 0.1
+  and geofence confidence "none" as 99.7%. These fields now keep a valid 0 and
+  fall back to the default only when empty
 - A UBX header with a corrupted length field could stop the receive thread
   from reading the module for good: once the claimed frame no longer fit the
   8 KB receive buffer, the thread spun at 100% CPU and navigation froze until

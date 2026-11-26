@@ -2949,10 +2949,18 @@ function populateFormFromConfig(config) {
     }
 }
 
+// Reads a number field where 0 is a valid value (Portable, falling edge,
+// zero pulse width, confidence "none"). `parseInt(x) || dflt` would turn
+// that 0 into the default.
+function readNumberField(id, parse, dflt) {
+    const v = parse(document.getElementById(id).value);
+    return Number.isFinite(v) ? v : dflt;
+}
+
 function buildConfigFromForm() {
     const config = {
         measurement_rate_hz: parseInt(document.getElementById('cfg-rate').value) || 1,
-        dynamic_model: parseInt(document.getElementById('cfg-dynmodel').value) || 2,
+        dynamic_model: readNumberField('cfg-dynmodel', parseInt, 2),
     };
 
     // Navigation Filters — emit each sub-field only if it differs from
@@ -2994,15 +3002,15 @@ function buildConfigFromForm() {
             active: true,
             fixed_pulse: {
                 frequency: parseInt(document.getElementById('cfg-tp-freq').value) || 1,
-                pulse_width: parseFloat(document.getElementById('cfg-tp-pw').value) || 0.1,
+                pulse_width: readNumberField('cfg-tp-pw', parseFloat, 0.1),
             },
-            polarity: parseInt(document.getElementById('cfg-tp-polarity').value) || 1,
+            polarity: readNumberField('cfg-tp-polarity', parseInt, 1),
         };
 
         if (document.getElementById('cfg-tp-nofix-en').checked) {
             config.timepulse_pin_config.pulse_when_no_fix = {
                 frequency: parseInt(document.getElementById('cfg-tp-nofix-freq').value) || 1,
-                pulse_width: parseFloat(document.getElementById('cfg-tp-nofix-pw').value) || 0.1,
+                pulse_width: readNumberField('cfg-tp-nofix-pw', parseFloat, 0.1),
             };
         }
     } else {
@@ -3026,7 +3034,7 @@ function buildConfigFromForm() {
         if (fences.length > 0) {
             config.geofencing = {
                 geofences: fences,
-                confidence_level: parseInt(document.getElementById('cfg-geo-conf').value) || 3,
+                confidence_level: readNumberField('cfg-geo-conf', parseInt, 3),
             };
             if (document.getElementById('cfg-geo-pin-en').checked) {
                 config.geofencing.pin_polarity = parseInt(document.getElementById('cfg-geo-pin-pol').value) || 0;
