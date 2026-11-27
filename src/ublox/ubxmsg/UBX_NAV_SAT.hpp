@@ -17,7 +17,12 @@ namespace JimmyPaputto::ubxmsg
 class UBX_NAV_SAT: public IUbxMsg
 {
 public:
-    explicit UBX_NAV_SAT() = default;
+    static constexpr std::size_t maxNumberOfSatellites = 255;
+
+    explicit UBX_NAV_SAT()
+    {
+        satellites_.reserve(maxNumberOfSatellites);
+    }
 
     std::vector<uint8_t> serialize() const override
     {

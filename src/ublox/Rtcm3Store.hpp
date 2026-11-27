@@ -5,6 +5,7 @@
 #ifndef JP_RTCM3_STORE_HPP_
 #define JP_RTCM3_STORE_HPP_
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <stop_token>
@@ -21,9 +22,12 @@ namespace JimmyPaputto
 class Rtcm3Store final
 {
 public:
+    // 3-byte header, up to 1023 bytes of payload, 3-byte CRC.
+    static constexpr std::size_t maxFrameSize = 3 + 1023 + 3;
+
     explicit Rtcm3Store();
 
-    void updateFrame(const uint16_t id, const std::vector<uint8_t>& newFrame);
+    void updateFrame(const uint16_t id, std::span<const uint8_t> newFrame);
     void updateFramesAndNotify(
         const std::vector<std::vector<uint8_t>>& newFrames
     );
@@ -33,7 +37,12 @@ public:
         std::span<const uint16_t> ids) const;
 
     std::vector<std::vector<uint8_t>> waitForFrames();
-    std::vector<std::vector<uint8_t>> waitForFrames(std::stop_token stoken);
+
+    // Hands the next batch over by swapping it into `frames` rather than
+    // copying it, so the waiting thread does not allocate. Returns false,
+    // with `frames` empty, when stopped or the store stays locked.
+    bool waitForFrames(std::stop_token stoken,
+        std::vector<std::vector<uint8_t>>& frames);
 
 private:
     std::unordered_map<uint16_t, std::vector<uint8_t>> frames_;

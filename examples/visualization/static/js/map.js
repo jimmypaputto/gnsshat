@@ -2709,7 +2709,21 @@ function clearGeofenceRows() {
     geoFenceCount = 0;
 }
 
+// Navigation filters the form has no field for (set in the node's YAML in
+// ros2 mode). Kept from the last loaded config and sent back unchanged, so
+// Send Config does not drop them.
+const NAV_FILTERS_NOT_IN_FORM = [
+    'min_svs', 'max_svs', 'min_cno_dbhz', 'n_cno_thrs', 'cno_thrs_dbhz',
+];
+let _navFiltersNotInForm = {};
+
 function populateFormFromConfig(config) {
+    _navFiltersNotInForm = {};
+    for (const key of NAV_FILTERS_NOT_IN_FORM) {
+        const v = config.navigation_filters && config.navigation_filters[key];
+        if (typeof v === 'number') _navFiltersNotInForm[key] = v;
+    }
+
     // Rate
     document.getElementById('cfg-rate').value = config.measurement_rate_hz || 1;
 
@@ -2827,6 +2841,11 @@ function populateFormFromConfig(config) {
                 const baseMode = rtk.base.base_mode ?? 0;
                 document.getElementById('cfg-rtk-basemode').value = baseMode;
 
+                const corrSel = document.getElementById('cfg-rtk-corrections');
+                if (corrSel) {
+                    corrSel.value = rtk.base.corrections === 'tiny' ? 'tiny' : 'full';
+                }
+
                 document.getElementById('cfg-rtk-si-details').style.display = parseInt(baseMode) === 0 ? '' : 'none';
                 document.getElementById('cfg-rtk-fp-details').style.display = parseInt(baseMode) === 1 ? '' : 'none';
 
@@ -2924,26 +2943,30 @@ function populateFormFromConfig(config) {
     if (ros2StdTopics) {
         ros2StdTopics.checked = config.publish_standard_topics !== false;
     }
-    const ros2Ntrip = document.getElementById('cfg-ros2-ntrip');
-    if (ros2Ntrip) {
-        ros2Ntrip.checked = !!config.use_ntrip_rtcm;
-    }
     const ros2SaveYaml = document.getElementById('cfg-ros2-save-yaml');
     if (ros2SaveYaml) {
         ros2SaveYaml.checked = !!config.save_to_yaml;
     }
 }
 
+// Reads a number field where 0 is a valid value (Portable, falling edge,
+// zero pulse width, confidence "none"). `parseInt(x) || dflt` would turn
+// that 0 into the default.
+function readNumberField(id, parse, dflt) {
+    const v = parse(document.getElementById(id).value);
+    return Number.isFinite(v) ? v : dflt;
+}
+
 function buildConfigFromForm() {
     const config = {
         measurement_rate_hz: parseInt(document.getElementById('cfg-rate').value) || 1,
-        dynamic_model: parseInt(document.getElementById('cfg-dynmodel').value) || 2,
+        dynamic_model: readNumberField('cfg-dynmodel', parseInt, 2),
     };
 
     // Navigation Filters — emit each sub-field only if it differs from
     // the receiver default (keeps the outgoing config minimal and avoids
     // spurious flash writes).
-    const nf = {};
+    const nf = { ..._navFiltersNotInForm };
     const navMaskNum = document.getElementById('cfg-navfilt-minelev-num');
     if (navMaskNum) {
         const v = parseInt(navMaskNum.value, 10);
@@ -2979,15 +3002,15 @@ function buildConfigFromForm() {
             active: true,
             fixed_pulse: {
                 frequency: parseInt(document.getElementById('cfg-tp-freq').value) || 1,
-                pulse_width: parseFloat(document.getElementById('cfg-tp-pw').value) || 0.1,
+                pulse_width: readNumberField('cfg-tp-pw', parseFloat, 0.1),
             },
-            polarity: parseInt(document.getElementById('cfg-tp-polarity').value) || 1,
+            polarity: readNumberField('cfg-tp-polarity', parseInt, 1),
         };
 
         if (document.getElementById('cfg-tp-nofix-en').checked) {
             config.timepulse_pin_config.pulse_when_no_fix = {
                 frequency: parseInt(document.getElementById('cfg-tp-nofix-freq').value) || 1,
-                pulse_width: parseFloat(document.getElementById('cfg-tp-nofix-pw').value) || 0.1,
+                pulse_width: readNumberField('cfg-tp-nofix-pw', parseFloat, 0.1),
             };
         }
     } else {
@@ -3011,7 +3034,7 @@ function buildConfigFromForm() {
         if (fences.length > 0) {
             config.geofencing = {
                 geofences: fences,
-                confidence_level: parseInt(document.getElementById('cfg-geo-conf').value) || 3,
+                confidence_level: readNumberField('cfg-geo-conf', parseInt, 3),
             };
             if (document.getElementById('cfg-geo-pin-en').checked) {
                 config.geofencing.pin_polarity = parseInt(document.getElementById('cfg-geo-pin-pol').value) || 0;
@@ -3032,6 +3055,10 @@ function buildConfigFromForm() {
         if (rtkMode === 0) { // Base
             const baseMode = parseInt(document.getElementById('cfg-rtk-basemode').value);
             const base = { base_mode: baseMode };
+            const corrSel = document.getElementById('cfg-rtk-corrections');
+            if (corrSel) {
+                base.corrections = corrSel.value;
+            }
 
             if (baseMode === 0) { // Survey-In
                 base.survey_in = {
@@ -3127,10 +3154,6 @@ function buildConfigFromForm() {
     const ros2StdTopics = document.getElementById('cfg-ros2-stdtopics');
     if (ros2StdTopics) {
         config.publish_standard_topics = ros2StdTopics.checked;
-    }
-    const ros2Ntrip = document.getElementById('cfg-ros2-ntrip');
-    if (ros2Ntrip) {
-        config.use_ntrip_rtcm = ros2Ntrip.checked;
     }
     const ros2SaveYaml = document.getElementById('cfg-ros2-save-yaml');
     if (ros2SaveYaml) {

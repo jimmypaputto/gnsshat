@@ -21,6 +21,8 @@ namespace JimmyPaputto
 class NavigationStore final
 {
 public:
+    NavigationStore();
+
     void dop(const DilutionOverPrecision& dop);
     void pvt(const PositionVelocityTime& pvt);
     void geofencingCfg(const Geofencing::Cfg& cfg);
@@ -52,6 +54,7 @@ private:
     std::string hwVersion_;
     std::vector<std::string> monVerExtensions_;
     SystemHealth systemHealth_;
+    std::vector<RfBlockSpectrumData> spareSpectrumBlocks_;
 };
 
 }  // JimmyPaputto

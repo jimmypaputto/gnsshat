@@ -5,6 +5,7 @@
 #include "UbxParser.hpp"
 
 #include <algorithm>
+#include <cstring>
 
 #include "EUbxMsg.hpp"
 #include "UbxClassMsgId.hpp"
@@ -24,28 +25,21 @@ namespace JimmyPaputto
 
 UbxParser::UbxParser(IUbloxConfigRegistry& configRegistry,
     NavigationStore& navigationStore, Notifier& timeMarkNotifier)
-:   endFrameIt_(frames_.end()),
+:   endFrameIt_(frames_.begin()),
     configRegistry_(configRegistry),
     ubxCallbacks_(configRegistry, navigationStore, timeMarkNotifier)
 {
-    constexpr uint16_t maxFrameSize = 1024;
-    unfinishedFrameFromBuffer_.reserve(maxFrameSize);
-    for (auto& frame: frames_)
-    {
-        frame.reserve(maxFrameSize);
-    }
 }
 
-std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
+std::span<const uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
 {
-    unfinishedFrameFromBuffer_.clear();
-    extractFrames(buffer);
+    const auto unfinishedFrame = extractFrames(buffer);
     for (auto frameIt = frames_.begin(); frameIt != endFrameIt_; frameIt++)
     {
         if (frameIt->empty())
             continue;
 
-        const auto& frame = *frameIt;
+        const auto frame = *frameIt;
         const auto eUbxMsg = UbxClassMsgId::translate(
             { frame[2], frame[3] }
         );
@@ -54,77 +48,60 @@ std::vector<uint8_t> UbxParser::parse(std::span<const uint8_t> buffer)
             ubxCallbacks_.run(*ubxMsg, eUbxMsg);
         }
     }
-    return unfinishedFrameFromBuffer_;
+    return unfinishedFrame;
 }
 
-void UbxParser::extractFrames(std::span<const uint8_t> buffer)
+std::size_t UbxParser::moveUnfinishedToFront(
+    std::span<const uint8_t> unfinished, std::span<uint8_t> buffer)
 {
-    std::array<uint8_t, 2> pattern {0xB5, 0x62};
-    auto bufferBegin = buffer.begin();
-    for (auto frameIt = frames_.begin(); frameIt != endFrameIt_; frameIt++)
-    {
-        frameIt->clear();
-    }
+    // The frame lies inside `buffer`, so source and destination may overlap.
+    if (!unfinished.empty())
+        std::memmove(buffer.data(), unfinished.data(), unfinished.size());
+    return unfinished.size();
+}
+
+std::span<const uint8_t> UbxParser::extractFrames(
+    std::span<const uint8_t> buffer)
+{
+    constexpr std::array<uint8_t, 2> pattern {0xB5, 0x62};
+    constexpr std::ptrdiff_t headerSize = 6;
+    constexpr std::ptrdiff_t checksumSize = 2;
 
     endFrameIt_ = frames_.begin();
+    auto searchFrom = buffer.begin();
 
-    for (uint16_t frameIndex = 0; frameIndex < maxNumberOfFrames_; frameIndex++)
+    while (endFrameIt_ != frames_.end())
     {
-        const auto beginFrameIterator = std::search(
-            bufferBegin,
-            buffer.end(),
-            pattern.begin(),
-            pattern.end()
+        const auto frameBegin = std::search(
+            searchFrom, buffer.end(), pattern.begin(), pattern.end()
         );
+        const auto available = std::distance(frameBegin, buffer.end());
+        if (available == 0)
+        {
+            if (searchFrom != buffer.end() && buffer.back() == pattern[0])
+                return { buffer.end() - 1, buffer.end() };
+            break;
+        }
 
-        if (beginFrameIterator != buffer.end() &&
-            std::distance(beginFrameIterator, buffer.end()) > 5)
+        if (available < headerSize)
+            return { frameBegin, buffer.end() };
+
+        const std::ptrdiff_t payloadSize = frameBegin[4] | (frameBegin[5] << 8);
+        const std::ptrdiff_t frameSize = headerSize + payloadSize + checksumSize;
+        if (frameSize > static_cast<std::ptrdiff_t>(maxFrameSize))
         {
-            auto endFrameIterator = beginFrameIterator + 4;
-            uint16_t dataLength;
-            std::memcpy(&dataLength, &(*endFrameIterator), sizeof(uint16_t));
-            if (std::distance(++endFrameIterator, buffer.end()) < dataLength + 3)
-            {
-                std::copy(
-                    beginFrameIterator,
-                    buffer.end(),
-                    std::back_inserter(unfinishedFrameFromBuffer_)
-                );
-                break;
-            }
-            else
-            {
-                endFrameIterator += dataLength + 3;
-                std::copy(
-                    beginFrameIterator,
-                    endFrameIterator,
-                    std::back_inserter(frames_[frameIndex])
-                );
-                if (!checkFrame(frames_[frameIndex]))
-                {
-                    frames_[frameIndex].clear();
-                }
-                endFrameIt_++;
-                bufferBegin = endFrameIterator;
-            }
+            searchFrom = frameBegin + 1;
+            continue;
         }
-        else if (
-            std::distance(beginFrameIterator, buffer.end()) <= 5 &&
-            beginFrameIterator != buffer.end()
-        )
-        {
-            std::copy(
-                beginFrameIterator,
-                buffer.end(),
-                std::back_inserter(unfinishedFrameFromBuffer_)
-            );
-            break;
-        }
-        else
-        {
-            break;
-        }
+
+        if (available < frameSize)
+            return { frameBegin, buffer.end() };
+
+        const std::span<const uint8_t> frame(frameBegin, frameSize);
+        *endFrameIt_++ = checkFrame(frame) ? frame : std::span<const uint8_t>{};
+        searchFrom = frameBegin + frameSize;
     }
+    return {};
 }
 
 void UbxParser::addChecksum(std::vector<uint8_t>& frame)

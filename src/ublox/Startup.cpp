@@ -772,23 +772,63 @@ std::vector<uint8_t> StartupBase::getExpectedValue(const uint32_t key)
     return {};
 }
 
+static bool changesSpiPort(std::span<const uint8_t> valset)
+{
+    // Keys follow the UBX header and the version, layers and reserved bytes.
+    constexpr std::size_t firstKeyOffset = 6 + 4;
+    constexpr std::size_t keyLength = 4;
+    constexpr std::size_t checksumSize = 2;
+    const std::size_t end = valset.size() - checksumSize;
+
+    for (std::size_t offset = firstKeyOffset; offset + keyLength <= end; )
+    {
+        const auto key = readLE<uint32_t>(valset, offset);
+        if (UbxCfgKeys::groupId(key)
+            == UbxCfgKeys::groupId(UbxCfgKeys::CFG_SPI_ENABLED))
+            return true;
+        offset += keyLength + UbxCfgKeys::keySize(key);
+    }
+    return false;
+}
+
 bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
 {
     bool& ack = configRegistry_.ack()[to_underlying(msgType)];
+    bool& nak = configRegistry_.nak()[to_underlying(msgType)];
     ack = false;
-    std::ranges::fill(rxBuff_, 0);
-    commDriver_.transmitReceive(payload, rxBuff_);
-    auto unfinished = ubxParser_.parse(rxBuff_);
+    nak = false;
+    const auto rejected = [&payload]() {
+        fprintf(
+            stderr,
+            "[Startup] Message 0x%02X 0x%02X rejected by the receiver\r\n",
+            payload[2], payload[3]
+        );
+        return false;
+    };
+
+    // The receiver applies new SPI port settings up to 2 ms after the frame,
+    // and whatever a transfer clocks out meanwhile comes out bit-shifted. The
+    // frame therefore goes in a transfer of its own, and the bus stays idle
+    // until the new settings are in place.
+    constexpr auto spiPortSettleTime = std::chrono::milliseconds(10);
+    std::vector<uint8_t> commandRxBuff(payload.size(), 0);
+    commDriver_.transmitReceive(payload, commandRxBuff);
+    if (msgType == EUbxMsg::UBX_CFG_VALSET && changesSpiPort(payload))
+        std::this_thread::sleep_for(spiPortSettleTime);
+
+    const auto unfinishedFrame = ubxParser_.parse(commandRxBuff);
+    std::ranges::copy(unfinishedFrame, rxBuff_.begin());
+    auto offset = unfinishedFrame.size();
 
     if (ack)
         return true;
+    if (nak)
+        return rejected();
 
     constexpr auto timeout = std::chrono::seconds(5);
     const auto deadline = std::chrono::steady_clock::now() + timeout;
     do
     {
-        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
-        const uint32_t offset = unfinished.size();
         const int bytesRead = pollRxData(
             rxBuff_.data() + offset,
             rxBuff_.size() - offset,
@@ -798,12 +838,17 @@ bool StartupBase::awaitAck(std::span<const uint8_t> payload, EUbxMsg msgType)
         if (bytesRead <= 0)
             continue;
 
-        unfinished = ubxParser_.parse(
-            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        offset = UbxParser::moveUnfinishedToFront(
+            ubxParser_.parse(
+                std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+            ),
+            rxBuff_
         );
 
         if (ack)
             return true;
+        if (nak)
+            return rejected();
     }
     while (std::chrono::steady_clock::now() < deadline);
 
@@ -833,7 +878,9 @@ bool StartupBase::pollMonVer(int timeoutMs)
     const auto pollFrame = ubxmsg::UBX_MON_VER::poll();
     std::ranges::fill(rxBuff_, 0);
     commDriver_.transmitReceive(pollFrame, rxBuff_);
-    auto unfinished = ubxParser_.parse(rxBuff_);
+    auto offset = UbxParser::moveUnfinishedToFront(
+        ubxParser_.parse(rxBuff_), rxBuff_
+    );
 
     if (ubxParser_.consumeMonVer())
         return true;
@@ -842,8 +889,6 @@ bool StartupBase::pollMonVer(int timeoutMs)
         + std::chrono::milliseconds(timeoutMs);
     do
     {
-        std::copy(unfinished.begin(), unfinished.end(), rxBuff_.begin());
-        const uint32_t offset = unfinished.size();
         const int bytesRead = pollRxData(
             rxBuff_.data() + offset,
             rxBuff_.size() - offset,
@@ -853,8 +898,11 @@ bool StartupBase::pollMonVer(int timeoutMs)
         if (bytesRead <= 0)
             continue;
 
-        unfinished = ubxParser_.parse(
-            std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+        offset = UbxParser::moveUnfinishedToFront(
+            ubxParser_.parse(
+                std::span<const uint8_t>(rxBuff_.data(), offset + bytesRead)
+            ),
+            rxBuff_
         );
 
         if (ubxParser_.consumeMonVer())

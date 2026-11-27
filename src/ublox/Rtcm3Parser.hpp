@@ -35,9 +35,11 @@ private:
     uint16_t getFrameId(std::span<const uint8_t> frame);
     bool checkFrame(std::span<const uint8_t> frame);
 
+    // Views into the buffer being parsed, valid only during parse(); a frame
+    // that failed its CRC is left empty.
     constexpr static uint16_t maxNumberOfFrames_ = 30;
-    std::array<std::vector<uint8_t>, maxNumberOfFrames_> frames_;
-    std::array<std::vector<uint8_t>, maxNumberOfFrames_>::iterator endFrameIt_;
+    std::array<std::span<const uint8_t>, maxNumberOfFrames_> frames_;
+    std::array<std::span<const uint8_t>, maxNumberOfFrames_>::iterator endFrameIt_;
     Rtcm3Store& rtcm3Store_;
 };
 

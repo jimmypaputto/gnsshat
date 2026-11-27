@@ -88,8 +88,8 @@ private:
     std::vector<uint8_t> uartBuff_;
     uint32_t uartBuffOffset_;
 
-    static constexpr uint32_t unfinishedFrameBuffMaxSize = 1024;
     std::vector<uint8_t> unfinishedFrameBuff_;
+    std::vector<std::vector<uint8_t>> roverFrames_;
 };
 
 }  // JimmyPaputto

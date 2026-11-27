@@ -221,7 +221,7 @@ All examples in [examples/python](../examples/python) follow this pattern.
 ## Module Functions and Constants
 
 ```python
-gnsshat.version()              # Returns '2.0.0'
+gnsshat.version()              # Returns '2.0.1'
 gnsshat.utc_time_iso8601(nav)  # Convert Navigation or PVT to ISO 8601 string
 gnsshat.fetch_sourcetable(host, port=2101, username='', password='',
                           timeout_ms=5000, use_tls=False, verify_peer=True)

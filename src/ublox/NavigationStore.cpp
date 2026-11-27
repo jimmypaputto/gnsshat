@@ -4,9 +4,27 @@
 
 #include "ublox/NavigationStore.hpp"
 
+#include "ublox/ubxmsg/UBX_MON_SPAN.hpp"
+#include "ublox/ubxmsg/UBX_NAV_SAT.hpp"
+
 
 namespace JimmyPaputto
 {
+
+NavigationStore::NavigationStore()
+:   navigation_(),
+    spareSpectrumBlocks_(RfBlockSpectrumData::maxNumberOfRfBlocks)
+{
+    // Sized for the largest message, so that the run loop copies into place
+    // even when more satellites or RF blocks show up than ever before.
+    // navigation() copies only the elements, not this capacity.
+    navigation_.satellites.reserve(ubxmsg::UBX_NAV_SAT::maxNumberOfSatellites);
+    navigation_.rfBlocks.reserve(RfBlock::maxNumberOfRfBlocks);
+    navigation_.rfBlocksSpectrumData.reserve(
+        RfBlockSpectrumData::maxNumberOfRfBlocks);
+    for (auto& block : spareSpectrumBlocks_)
+        block.data.reserve(ubxmsg::UBX_MON_SPAN::spectrumSize);
+}
 
 void NavigationStore::dop(const DilutionOverPrecision& dop)
 {
@@ -42,7 +60,16 @@ void NavigationStore::rfBlocksSpectrumData(
     const std::vector<RfBlockSpectrumData>& rfBlocksSpectrumData)
 {
     std::scoped_lock lock(mutex_);
-    navigation_.rfBlocksSpectrumData = rfBlocksSpectrumData;
+    auto& blocks = navigation_.rfBlocksSpectrumData;
+
+    // Blocks added by the copy below would allocate their spectra.
+    while (blocks.size() < rfBlocksSpectrumData.size()
+        && !spareSpectrumBlocks_.empty())
+    {
+        blocks.push_back(std::move(spareSpectrumBlocks_.back()));
+        spareSpectrumBlocks_.pop_back();
+    }
+    blocks = rfBlocksSpectrumData;
 }
 
 void NavigationStore::satellites(const std::vector<SatelliteInfo>& satellites)
